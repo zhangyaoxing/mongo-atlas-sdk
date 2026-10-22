@@ -1,0 +1,47 @@
+"""Generated resource for {{ class_name }}. Do not edit manually."""
+
+from __future__ import annotations
+{% if imports %}
+
+{% for line in imports %}
+{{ line }}
+{% endfor %}
+{% endif %}
+
+if TYPE_CHECKING:
+    from {{ package }}.client import AtlasClient
+
+
+class {{ class_name }}:
+{{ description|docblock(4) }}
+
+    def __init__(self, client: AtlasClient) -> None:
+        self._client = client
+{% for method in methods %}
+
+    def {{ method.name }}(
+{% for argument in method.arguments %}
+        {{ argument }},
+{% endfor %}
+    ) -> {{ method.return_annotation }}:
+{{ method.docstring|blockdoc(8) }}
+        path = {{ method.path }}
+{% if method.query_params %}
+        params = {
+{% for parameter in method.query_params %}
+            "{{ parameter.wire }}": {{ parameter.name }},
+{% endfor %}
+        }
+{% endif %}
+        return self._client.request(
+            method="{{ method.http_method }}",
+            path=path,
+{% if method.query_params %}
+            params=params,
+{% endif %}
+{% if method.has_body %}
+            json=body,
+{% endif %}
+            response_model={{ method.response_model }},
+        )
+{% endfor %}

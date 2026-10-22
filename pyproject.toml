@@ -25,7 +25,9 @@ classifiers = [
   "Programming Language :: Python :: 3.14",
   "Typing :: Typed",
 ]
-dependencies = []
+dependencies = [
+    "jinja2>=3.1.6",
+]
 
 [project.scripts]
 mongo-atlas = "mongo_atlas_sdk.cli:main"

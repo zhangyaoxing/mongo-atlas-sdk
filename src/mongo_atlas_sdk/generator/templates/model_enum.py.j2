@@ -1,0 +1,14 @@
+"""Generated model for {{ name }}. Do not edit manually."""
+
+from __future__ import annotations
+
+from enum import Enum
+
+class {{ name }}({{ base }}, Enum):
+{{ description|docblock(4) }}
+{% for member in members %}
+    {{ member.name }} = {{ member.value }}
+{% endfor %}
+{% if not members %}
+    pass
+{% endif %}

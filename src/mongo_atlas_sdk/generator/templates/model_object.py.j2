@@ -1,0 +1,26 @@
+"""Generated model for {{ name }}. Do not edit manually."""
+
+from __future__ import annotations
+{% if imports %}
+
+{% for line in imports %}
+{{ line }}
+{% endfor %}
+{% endif %}
+
+from pydantic import BaseModel, ConfigDict, Field
+
+class {{ name }}(BaseModel):
+{{ description|docblock(4) }}
+    model_config = ConfigDict(populate_by_name=True, extra="allow")
+{% if fields %}
+{% for field in fields %}
+    {{ field.name }}: {{ field.annotation }}{{ field.suffix }}
+{% endfor %}
+{% else %}
+    pass
+{% endif %}
+{% if rebuild %}
+
+{{ name }}.model_rebuild()
+{% endif %}

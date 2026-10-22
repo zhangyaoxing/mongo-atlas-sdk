@@ -1,4 +1,4 @@
-"""Render pydantic v2 model modules."""
+"""Render pydantic v2 model modules from templates."""
 
 from __future__ import annotations
 
@@ -6,8 +6,9 @@ import json
 from collections.abc import Mapping
 from typing import Any
 
-from mongo_atlas_sdk.generator.naming import docstring_lines, enum_member, field_name, snake_case
+from mongo_atlas_sdk.generator.naming import enum_member, field_name, snake_case
 from mongo_atlas_sdk.generator.schema import annotation, references
+from mongo_atlas_sdk.generator.templating import docstring_text, render
 
 _TYPING = frozenset({"Any", "Literal", "TypeAlias"})
 _DATETIME = frozenset({"datetime", "date"})
@@ -27,12 +28,10 @@ def _import_block(imports: set[str], package: str) -> list[str]:
     return lines
 
 
-def _object_body(definition: Mapping[str, Any], *, name: str, imports: set[str]) -> list[str]:
-    lines = [f"class {name}(BaseModel):"]
-    description = definition.get("description")
-    lines.extend(docstring_lines(description or f"Generated model for {name}.", "    "))
-    lines.append('    model_config = ConfigDict(populate_by_name=True, extra="allow")')
-
+def _object_fields(
+    definition: Mapping[str, Any], *, name: str, imports: set[str]
+) -> tuple[list[dict[str, Any]], bool]:
+    fields: list[dict[str, Any]] = []
     used_fields: set[str] = set()
     needs_rebuild = False
     properties = definition.get("properties") or {}
@@ -70,50 +69,25 @@ def _object_body(definition: Mapping[str, Any], *, name: str, imports: set[str])
         else:
             suffix = " = None"
 
-        lines.append(f"    {field}: {resolved}{suffix}")
+        fields.append({"name": field, "annotation": resolved, "suffix": suffix})
         if references(type_expr, name):
             needs_rebuild = True
-
-    if not properties:
-        lines.append("    pass")
-    elif needs_rebuild:
-        lines.extend(["", f"{name}.model_rebuild()"])
-    return lines
+    return fields, needs_rebuild
 
 
-def _enum_body(definition: Mapping[str, Any], *, name: str) -> list[str]:
-    base = "int" if definition.get("type") == "integer" else "str"
-    lines = [f"class {name}({base}, Enum):"]
-    lines.extend(
-        docstring_lines(definition.get("description") or f"Generated enum for {name}.", "    ")
-    )
+def _enum_members(definition: Mapping[str, Any]) -> list[dict[str, str]]:
+    members: list[dict[str, str]] = []
     used: set[str] = set()
-    values = definition.get("values") or []
-    for index, value in enumerate(values):
+    for index, value in enumerate(definition.get("values") or []):
         member = enum_member(value, index)
-        base_member = member
+        base = member
         counter = 2
         while member in used:
-            member = f"{base_member}_{counter}"
+            member = f"{base}_{counter}"
             counter += 1
         used.add(member)
-        lines.append(f"    {member} = {json.dumps(value)}")
-    if not values:
-        lines.append("    pass")
-    return lines
-
-
-def _alias_body(definition: Mapping[str, Any], *, name: str, imports: set[str]) -> list[str]:
-    if definition.get("kind") == "union":
-        target: Mapping[str, Any] = {
-            "kind": "union",
-            "variants": definition.get("variants") or [],
-        }
-    else:
-        target = definition.get("target") or {}
-    rendered = annotation(target, current=name, imports=imports)
-    imports.add("TypeAlias")
-    return [f"{name}: TypeAlias = {rendered}"]
+        members.append({"name": member, "value": json.dumps(value)})
+    return members
 
 
 def render_model(definition: Mapping[str, Any], *, package: str) -> str:
@@ -123,30 +97,45 @@ def render_model(definition: Mapping[str, Any], *, package: str) -> str:
     imports: set[str] = set()
 
     if kind == "object":
-        body = _object_body(definition, name=name, imports=imports)
-        third_party = ["from pydantic import BaseModel, ConfigDict, Field"]
-    elif kind == "enum":
-        body = _enum_body(definition, name=name)
-        third_party = ["from enum import Enum"]
-    else:
-        body = _alias_body(definition, name=name, imports=imports)
-        third_party = []
+        fields, rebuild = _object_fields(definition, name=name, imports=imports)
+        return render(
+            "model_object.py.j2",
+            name=name,
+            imports=_import_block(imports, package),
+            description=docstring_text(
+                definition.get("description"), f"Generated model for {name}."
+            ),
+            fields=fields,
+            rebuild=rebuild,
+        )
 
-    header = [
-        f'"""Generated model for {name}. Do not edit manually."""',
-        "",
-        "from __future__ import annotations",
-        "",
-    ]
-    stdlib = _import_block(imports, package)
-    if stdlib:
-        header.extend(stdlib)
-        header.append("")
-    if third_party:
-        header.extend(third_party)
-        header.append("")
-    header.extend(body)
-    return "\n".join(header).rstrip() + "\n"
+    if kind == "enum":
+        base = "int" if definition.get("type") == "integer" else "str"
+        return render(
+            "model_enum.py.j2",
+            name=name,
+            base=base,
+            description=docstring_text(
+                definition.get("description"), f"Generated enum for {name}."
+            ),
+            members=_enum_members(definition),
+        )
+
+    if kind == "union":
+        target: Mapping[str, Any] = {
+            "kind": "union",
+            "variants": definition.get("variants") or [],
+        }
+    else:
+        target = definition.get("target") or {}
+    imports.add("TypeAlias")
+    rendered_target = annotation(target, current=name, imports=imports)
+    return render(
+        "model_alias.py.j2",
+        name=name,
+        imports=_import_block(imports, package),
+        target=rendered_target,
+    )
 
 
 __all__ = ["render_model"]

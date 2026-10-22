@@ -292,7 +292,7 @@ def test_generated_package_imports_and_serializes(tmp_path: Path) -> None:
                 del sys.modules[name]
 
 
-def test_cli_generate_writes_package(
+def test_cli_pygen_writes_package(
     tmp_path: Path,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
@@ -300,7 +300,7 @@ def test_cli_generate_writes_package(
     source.write_text(json.dumps(_docs()), encoding="utf-8")
     output = tmp_path / "pkg"
 
-    assert main(["generate", "-i", str(source), "-o", str(output), "--package", "demo"]) == 0
+    assert main(["pygen", "-i", str(source), "-o", str(output), "--package", "demo"]) == 0
 
     assert (output / "client.py").exists()
     assert "6 models, 1 resources, 2 methods" in capsys.readouterr().out

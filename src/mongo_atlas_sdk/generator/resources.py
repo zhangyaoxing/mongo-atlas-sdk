@@ -1,4 +1,4 @@
-"""Render resource classes with one method per API endpoint."""
+"""Render resource classes from templates, one method per API endpoint."""
 
 from __future__ import annotations
 
@@ -6,8 +6,9 @@ import json
 from collections.abc import Mapping
 from typing import Any
 
-from mongo_atlas_sdk.generator.naming import docstring_lines, pascal_case, snake_case
+from mongo_atlas_sdk.generator.naming import pascal_case, snake_case
 from mongo_atlas_sdk.generator.schema import annotation
+from mongo_atlas_sdk.generator.templating import docstring_text, render
 
 _TYPING = frozenset({"Any", "Literal"})
 _SUCCESS_PREFIX = "2"
@@ -54,7 +55,7 @@ def _method_docstring(
     path_parameters: list[Mapping[str, Any]],
     query_parameters: list[Mapping[str, Any]],
     body: Mapping[str, Any] | None,
-) -> list[str]:
+) -> str:
     summary = str(endpoint.get("summary") or "").strip() or "Call the API endpoint."
     description = str(endpoint.get("description") or "").strip()
     parts = [summary]
@@ -85,14 +86,10 @@ def _method_docstring(
             collapsed = " ".join(description_text.split())
             parts.append(f"    {name}: {collapsed}" if collapsed else f"    {name}:")
 
-    text = "\n".join(parts).strip().replace("\\", "\\\\").replace('"""', '\\"\\"\\"')
-    lines = ['        """']
-    lines.extend(f"        {line}" if line else "" for line in text.splitlines())
-    lines.append('        """')
-    return lines
+    return "\n".join(parts).strip().replace("\\", "\\\\").replace('"""', '\\"\\"\\"')
 
 
-def _render_method(endpoint: Mapping[str, Any], imports: set[str]) -> list[str]:
+def _render_method(endpoint: Mapping[str, Any], imports: set[str]) -> dict[str, Any]:
     operation_id = str(endpoint.get("operation_id") or "call")
     method_name = snake_case(operation_id)
     path_parameters = [
@@ -109,65 +106,50 @@ def _render_method(endpoint: Mapping[str, Any], imports: set[str]) -> list[str]:
     if not isinstance(body, Mapping):
         body = None
 
-    arguments: list[str] = ["        self,"]
+    arguments: list[str] = ["self"]
     keyword_arguments: list[str] = []
 
     for parameter in path_parameters:
         parameter_type = annotation(parameter.get("type") or {}, current="", imports=imports)
-        arguments.append(
-            f"        {snake_case(str(parameter.get('name') or ''))}: {parameter_type},"
-        )
+        arguments.append(f"{snake_case(str(parameter.get('name') or ''))}: {parameter_type}")
 
     if body is not None:
         body_type = annotation(body.get("type") or {}, current="", imports=imports)
         if body.get("required"):
-            arguments.append(f"        body: {body_type},")
+            arguments.append(f"body: {body_type}")
         else:
-            keyword_arguments.append(f"        body: {body_type} | None = None,")
+            keyword_arguments.append(f"body: {body_type} | None = None")
 
     for parameter in query_parameters:
         parameter_type = annotation(parameter.get("type") or {}, current="", imports=imports)
         name = snake_case(str(parameter.get("name") or ""))
         if parameter.get("required"):
-            keyword_arguments.append(f"        {name}: {parameter_type},")
+            keyword_arguments.append(f"{name}: {parameter_type}")
         else:
-            keyword_arguments.append(f"        {name}: {parameter_type} | None = None,")
+            keyword_arguments.append(f"{name}: {parameter_type} | None = None")
 
     if keyword_arguments:
-        arguments.append("        *,")
+        arguments.append("*")
         arguments.extend(keyword_arguments)
 
     return_annotation = _response_annotation(endpoint, imports)
-
-    lines = [f"    def {method_name}("]
-    lines.extend(arguments)
-    lines.append(f"    ) -> {return_annotation}:")
-    lines.extend(_method_docstring(endpoint, path_parameters, query_parameters, body))
-    lines.append(
-        f"        path = {_path_expression(str(endpoint.get('path') or ''), path_parameters, imports)}"
-    )
-
-    if query_parameters:
-        lines.append("        params = {")
-        for parameter in query_parameters:
-            wire_name = str(parameter.get("name") or "")
-            lines.append(f"            {json.dumps(wire_name)}: {snake_case(wire_name)},")
-        lines.append("        }")
-
-    lines.append("        return self._client.request(")
-    lines.append(f"            method={json.dumps(str(endpoint.get('method') or 'GET'))},")
-    lines.append("            path=path,")
-    if query_parameters:
-        lines.append("            params=params,")
-    if body is not None:
-        lines.append("            json=body,")
-    lines.append(
-        "            response_model=None,"
-        if return_annotation == "None"
-        else f"            response_model={return_annotation},"
-    )
-    lines.append("        )")
-    return lines
+    return {
+        "name": method_name,
+        "arguments": arguments,
+        "return_annotation": return_annotation,
+        "docstring": _method_docstring(endpoint, path_parameters, query_parameters, body),
+        "path": _path_expression(str(endpoint.get("path") or ""), path_parameters, imports),
+        "query_params": [
+            {
+                "wire": str(parameter.get("name") or ""),
+                "name": snake_case(str(parameter.get("name") or "")),
+            }
+            for parameter in query_parameters
+        ],
+        "has_body": body is not None,
+        "http_method": str(endpoint.get("method") or "GET"),
+        "response_model": return_annotation,
+    }
 
 
 def _import_block(imports: set[str], package: str) -> list[str]:
@@ -191,46 +173,19 @@ def render_resource(category: Mapping[str, Any], *, package: str) -> str:
     """Render one normalized category as a resource class module."""
     class_name = pascal_case(str(category.get("name") or "Untagged"))
     imports: set[str] = set()
-    methods: list[list[str]] = []
+    methods: list[dict[str, Any]] = []
     for endpoint in category.get("endpoints") or []:
         if isinstance(endpoint, Mapping):
             methods.append(_render_method(endpoint, imports))
 
-    lines = [
-        f'"""Generated resource for {class_name}. Do not edit manually."""',
-        "",
-        "from __future__ import annotations",
-        "",
-    ]
-    lines.extend(_import_block(imports, package))
-    lines.extend(
-        [
-            "",
-            "if TYPE_CHECKING:",
-            f"    from {package}.client import AtlasClient",
-            "",
-            "",
-            f"class {class_name}:",
-        ]
+    return render(
+        "resource.py.j2",
+        class_name=class_name,
+        package=package,
+        imports=_import_block(imports, package),
+        description=docstring_text(category.get("description"), f"Operations for {class_name}."),
+        methods=methods,
     )
-    lines.extend(
-        docstring_lines(
-            category.get("description") or f"Operations for {class_name}.",
-            "    ",
-        )
-    )
-    lines.extend(
-        [
-            "",
-            "    def __init__(self, client: AtlasClient) -> None:",
-            "        self._client = client",
-            "",
-        ]
-    )
-    for method_lines in methods:
-        lines.extend(method_lines)
-        lines.append("")
-    return "\n".join(lines).rstrip() + "\n"
 
 
 __all__ = ["render_resource"]

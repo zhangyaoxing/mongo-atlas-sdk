@@ -12,6 +12,7 @@ from mongo_atlas_sdk.generator.models import render_model
 from mongo_atlas_sdk.generator.naming import pascal_case, snake_case
 from mongo_atlas_sdk.generator.resources import render_resource
 from mongo_atlas_sdk.generator.schema import hoist_inline_objects
+from mongo_atlas_sdk.generator.templating import render
 
 DEFAULT_PACKAGE = "pyatlassdk"
 
@@ -27,75 +28,17 @@ def _reset_directory(path: Path) -> None:
 
 
 def _models_init(modules: Mapping[str, str]) -> str:
-    lines = [
-        '"""Generated pydantic models. Do not edit manually."""',
-        "",
-        "from __future__ import annotations",
-        "",
-        "import importlib",
-        "",
-        "_MODULES = {",
-    ]
-    for name in sorted(modules):
-        lines.append(f"    {name!r}: {modules[name]!r},")
-    lines.extend(
-        [
-            "}",
-            "",
-            "__all__ = sorted(_MODULES)",
-            "",
-            "",
-            "def __getattr__(name: str) -> object:",
-            "    module_name = _MODULES.get(name)",
-            "    if module_name is None:",
-            '        raise AttributeError(f"module {__name__!r} has no attribute {name!r}")',
-            '    module = importlib.import_module(f"{__name__}.{module_name}")',
-            "    value = getattr(module, name)",
-            "    globals()[name] = value",
-            "    return value",
-            "",
-            "",
-            "def __dir__() -> list[str]:",
-            "    return sorted(_MODULES)",
-            "",
-        ]
-    )
-    return "\n".join(lines)
+    entries = [{"name": name, "module": modules[name]} for name in sorted(modules)]
+    return render("models_init.py.j2", modules=entries)
 
 
 def _resources_init(modules: Mapping[str, str], package: str) -> str:
-    lines = [
-        '"""Generated resource classes. Do not edit manually."""',
-        "",
-        "from __future__ import annotations",
-        "",
-    ]
-    for name in sorted(modules):
-        lines.append(f"from {package}.resources.{modules[name]} import {name}")
-    lines.extend(["", "__all__ = [", *(f"    {name!r}," for name in sorted(modules)), "]", ""])
-    return "\n".join(lines)
+    entries = [{"name": name, "module": modules[name]} for name in sorted(modules)]
+    return render("resources_init.py.j2", package=package, resources=entries)
 
 
 def _package_init(package: str) -> str:
-    return "\n".join(
-        [
-            '"""Generated MongoDB Atlas SDK. Do not edit manually."""',
-            "",
-            "from __future__ import annotations",
-            "",
-            "from importlib.metadata import PackageNotFoundError, version",
-            "",
-            f"from {package}.client import AtlasApiError, AtlasClient",
-            "",
-            "try:",
-            f'    __version__ = version("{package}")',
-            "except PackageNotFoundError:  # pragma: no cover - running from a source checkout",
-            '    __version__ = "0.0.0"',
-            "",
-            '__all__ = ["AtlasApiError", "AtlasClient", "__version__"]',
-            "",
-        ]
-    )
+    return render("package_init.py.j2", package=package)
 
 
 def generate_python(

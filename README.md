@@ -12,13 +12,12 @@ MongoDB Atlas SDK 生成器与命令行工具（Python ≥ 3.10）。生成产�
 ## 快速开始
 
 ```bash
-uv sync                              # 创建 .venv 并安装依赖
-uv run mongo-atlas --version         # 查看版本
-uv run mongo-atlas config            # 查看当前生效配置（密钥自动打码）
-uv run mongo-atlas crawl             # 抓取 API 文档到 .data/api_docs.json
-uv run mongo-atlas normalize         # 归一化为 .data/normalized_api_docs.json
-uv run mongo-atlas generate          # 生成 SDK 到 pyatlassdk 子模块
-uv run python -m mongo_atlas_sdk     # 等价的模块入口
+uv sync                # 创建 .venv 并安装依赖
+make pipeline          # 抓取 → 清洗 → 生成 SDK（一条命令）
+# 也可以单步执行：
+make crawl             # .data/api_docs.json
+make normalize         # .data/normalized_api_docs.json
+make pygen             # pyatlassdk/src/pyatlassdk
 ```
 
 ## 常用命令
@@ -34,9 +33,13 @@ uv run python -m mongo_atlas_sdk     # 等价的模块入口
 | `make check` | 与 CI 一致的全套检查 |
 | `make build` | 构建 sdist / wheel 到 `dist/` |
 | `make lock` | 更新 `uv.lock` |
-| `uv run mongo-atlas crawl` | 抓取 OpenAPI 文档到 `.data/api_docs.json` |
-| `uv run mongo-atlas normalize` | 归一化到 `.data/normalized_api_docs.json` |
-| `uv run mongo-atlas generate` | 生成 SDK 到 `pyatlassdk/`（models / resources / client） |
+| `make crawl` | 抓取最新 OpenAPI 文档到 `.data/api_docs.json` |
+| `make normalize` | 清洗为 `.data/normalized_api_docs.json` |
+| `make pygen` | 用模板生成 SDK 到 `pyatlassdk/` |
+| `make pipeline` | 依次执行 crawl → normalize → pygen |
+| `uv run mongo-atlas crawl` | CLI：抓取 |
+| `uv run mongo-atlas normalize` | CLI：清洗 |
+| `uv run mongo-atlas pygen` | CLI：生成 |
 
 ## 抓取 API 文档
 
@@ -219,9 +222,11 @@ SDK 生成到独立仓库 [pyatlassdk](https://github.com/zhangyaoxing/pyatlassd
 
 ```bash
 git clone --recurse-submodules git@github.com:zhangyaoxing/mongo-atlas-sdk.git
-uv run mongo-atlas generate                              # 写入 pyatlassdk/src/pyatlassdk
-uv run mongo-atlas generate -o /tmp/sdk --package sdk    # 生成到任意目录
+make pygen                                               # 写入 pyatlassdk/src/pyatlassdk
+uv run mongo-atlas pygen -o /tmp/sdk --package sdk       # 生成到任意目录
 ```
+
+生成完全由 Jinja2 模板驱动，模板位于 `src/mongo_atlas_sdk/generator/templates/`，输入只有 `normalized_api_docs.json`。同样的输入会得到逐字节相同的输出，不涉及任何模型推断或人工修改。
 
 输出（`pyatlassdk/src/pyatlassdk/`）：
 
@@ -276,11 +281,13 @@ with AtlasClient(public_key="...", private_key="...") as client:
 │   │   ├── schema.py
 │   │   └── api.py
 │   ├── generator/            # normalized_api_docs.json → pyatlassdk
-│   │   ├── naming.py
-│   │   ├── schema.py
-│   │   ├── models.py
-│   │   ├── resources.py
-│   │   └── client.py
+│   │   ├── naming.py         # 命名与标识符清洗
+│   │   ├── schema.py         # 匿名类型提升与注解
+│   │   ├── models.py         # 模型渲染上下文
+│   │   ├── resources.py      # 资源渲染上下文
+│   │   ├── client.py         # 客户端渲染上下文
+│   │   ├── templating.py     # Jinja2 环境
+│   │   └── templates/        # .py.j2 模板
 │   └── py.typed              # 自带类型信息（PEP 561）
 ├── tests/                    # pytest 测试（fixtures/mini_openapi.json）
 ├── .data/                    # 抓取产物（git-ignored）

@@ -99,28 +99,28 @@ def build_parser() -> argparse.ArgumentParser:
         help="Output path (default: %(default)s).",
     )
 
-    generate_parser = subparsers.add_parser(
-        "generate",
+    pygen_parser = subparsers.add_parser(
+        "pygen",
         help="Generate the Python SDK from .data/normalized_api_docs.json.",
         description=(
             "Render pydantic models, resource classes, and the Atlas client into the output package."
         ),
     )
-    generate_parser.add_argument(
+    pygen_parser.add_argument(
         "-i",
         "--input",
         type=Path,
         default=DEFAULT_NORMALIZED_OUTPUT,
         help="Normalized document to read (default: %(default)s).",
     )
-    generate_parser.add_argument(
+    pygen_parser.add_argument(
         "-o",
         "--output",
         type=Path,
         default=DEFAULT_GENERATED_OUTPUT,
         help="Package directory to generate into (default: %(default)s).",
     )
-    generate_parser.add_argument(
+    pygen_parser.add_argument(
         "--package",
         default="pyatlassdk",
         help="Import name of the generated package (default: %(default)s).",
@@ -186,7 +186,7 @@ def _normalize(args: argparse.Namespace) -> int:
     return 0
 
 
-def _generate(args: argparse.Namespace) -> int:
+def _pygen(args: argparse.Namespace) -> int:
     docs = _load_json_object(args.input)
     if docs is None:
         return 1
@@ -225,8 +225,8 @@ def main(argv: Sequence[str] | None = None) -> int:
     if args.command == "normalize":
         return _normalize(args)
 
-    if args.command == "generate":
-        return _generate(args)
+    if args.command == "pygen":
+        return _pygen(args)
 
     parser.print_help()
     return 0

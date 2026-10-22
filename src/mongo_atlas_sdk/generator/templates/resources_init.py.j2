@@ -1,0 +1,13 @@
+"""Generated resource classes. Do not edit manually."""
+
+from __future__ import annotations
+
+{% for resource in resources %}
+from {{ package }}.resources.{{ resource.module }} import {{ resource.name }}
+{% endfor %}
+
+__all__ = [
+{% for resource in resources %}
+    '{{ resource.name }}',
+{% endfor %}
+]

@@ -1,0 +1,11 @@
+"""Generated model for {{ name }}. Do not edit manually."""
+
+from __future__ import annotations
+{% if imports %}
+
+{% for line in imports %}
+{{ line }}
+{% endfor %}
+{% endif %}
+
+{{ name }}: TypeAlias = {{ target }}
