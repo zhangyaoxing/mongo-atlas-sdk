@@ -1,0 +1,3 @@
+[submodule "pyatlassdk"]
+	path = pyatlassdk
+	url = git@github.com:zhangyaoxing/pyatlassdk.git

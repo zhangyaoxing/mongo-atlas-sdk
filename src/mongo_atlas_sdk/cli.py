@@ -24,7 +24,7 @@ from mongo_atlas_sdk.normalizer import normalize_api_docs
 
 DEFAULT_OUTPUT = Path(".data/api_docs.json")
 DEFAULT_NORMALIZED_OUTPUT = Path(".data/normalized_api_docs.json")
-DEFAULT_GENERATED_OUTPUT = Path("src/mongo_atlas_sdk")
+DEFAULT_GENERATED_OUTPUT = Path("pyatlassdk/src/pyatlassdk")
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -122,7 +122,7 @@ def build_parser() -> argparse.ArgumentParser:
     )
     generate_parser.add_argument(
         "--package",
-        default="mongo_atlas_sdk",
+        default="pyatlassdk",
         help="Import name of the generated package (default: %(default)s).",
     )
     return parser

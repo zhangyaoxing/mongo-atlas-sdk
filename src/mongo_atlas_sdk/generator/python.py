@@ -13,7 +13,7 @@ from mongo_atlas_sdk.generator.naming import pascal_case, snake_case
 from mongo_atlas_sdk.generator.resources import render_resource
 from mongo_atlas_sdk.generator.schema import hoist_inline_objects
 
-DEFAULT_PACKAGE = "mongo_atlas_sdk"
+DEFAULT_PACKAGE = "pyatlassdk"
 
 
 class GeneratorError(RuntimeError):
@@ -74,6 +74,28 @@ def _resources_init(modules: Mapping[str, str], package: str) -> str:
         lines.append(f"from {package}.resources.{modules[name]} import {name}")
     lines.extend(["", "__all__ = [", *(f"    {name!r}," for name in sorted(modules)), "]", ""])
     return "\n".join(lines)
+
+
+def _package_init(package: str) -> str:
+    return "\n".join(
+        [
+            '"""Generated MongoDB Atlas SDK. Do not edit manually."""',
+            "",
+            "from __future__ import annotations",
+            "",
+            "from importlib.metadata import PackageNotFoundError, version",
+            "",
+            f"from {package}.client import AtlasApiError, AtlasClient",
+            "",
+            "try:",
+            f'    __version__ = version("{package}")',
+            "except PackageNotFoundError:  # pragma: no cover - running from a source checkout",
+            '    __version__ = "0.0.0"',
+            "",
+            '__all__ = ["AtlasApiError", "AtlasClient", "__version__"]',
+            "",
+        ]
+    )
 
 
 def generate_python(
@@ -141,6 +163,8 @@ def generate_python(
         render_client(resource_modules, package=package),
         encoding="utf-8",
     )
+    (output_root / "__init__.py").write_text(_package_init(package), encoding="utf-8")
+    (output_root / "py.typed").write_text("", encoding="utf-8")
 
     return {
         "models": len(model_modules),

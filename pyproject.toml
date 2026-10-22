@@ -25,10 +25,7 @@ classifiers = [
   "Programming Language :: Python :: 3.14",
   "Typing :: Typed",
 ]
-dependencies = [
-    "httpx>=0.28.1",
-    "pydantic>=2.14.1",
-]
+dependencies = []
 
 [project.scripts]
 mongo-atlas = "mongo_atlas_sdk.cli:main"
@@ -42,8 +39,10 @@ Issues = "https://github.com/zhangyaoxing/mongo-atlas-sdk/issues"
 [dependency-groups]
 dev = [
   "build>=1.2.2",
+  "httpx>=0.28.1",
   "mypy>=1.13",
   "pre-commit>=4.0",
+  "pydantic>=2.14.1",
   "pytest>=8.3",
   "pytest-cov>=6.0",
   "ruff>=0.9",
@@ -58,17 +57,8 @@ packages = ["src/mongo_atlas_sdk"]
 [tool.ruff]
 line-length = 100
 target-version = "py310"
-# Honour `extend-exclude` even when pre-commit passes explicit filenames.
-force-exclude = true
 src = ["src", "tests"]
-extend-exclude = [
-  "dist",
-  "build",
-  # Generated SDK code: formatting and typing are owned by the generator.
-  "src/mongo_atlas_sdk/models",
-  "src/mongo_atlas_sdk/resources",
-  "src/mongo_atlas_sdk/client.py",
-]
+extend-exclude = ["dist", "build"]
 
 [tool.ruff.lint]
 select = ["E", "W", "F", "I", "UP", "B", "SIM", "C4", "PTH", "RUF"]
@@ -84,11 +74,6 @@ docstring-code-format = true
 [tool.mypy]
 python_version = "3.10"
 files = ["src", "tests"]
-exclude = [
-  "^src/mongo_atlas_sdk/models/",
-  "^src/mongo_atlas_sdk/resources/",
-  "^src/mongo_atlas_sdk/client\\.py$",
-]
 strict = true
 pretty = true
 show_error_codes = true

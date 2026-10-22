@@ -2,7 +2,7 @@
 
 # mongo-atlas-sdk
 
-MongoDB Atlas SDK 与命令行工具（Python ≥ 3.10）。
+MongoDB Atlas SDK 生成器与命令行工具（Python ≥ 3.10）。生成产物发布为 [pyatlassdk](https://pypi.org/project/pyatlassdk/)。
 
 ## 环境要求
 
@@ -17,7 +17,7 @@ uv run mongo-atlas --version         # 查看版本
 uv run mongo-atlas config            # 查看当前生效配置（密钥自动打码）
 uv run mongo-atlas crawl             # 抓取 API 文档到 .data/api_docs.json
 uv run mongo-atlas normalize         # 归一化为 .data/normalized_api_docs.json
-uv run mongo-atlas generate          # 生成 Python SDK 到 src/mongo_atlas_sdk
+uv run mongo-atlas generate          # 生成 SDK 到 pyatlassdk 子模块
 uv run python -m mongo_atlas_sdk     # 等价的模块入口
 ```
 
@@ -36,7 +36,7 @@ uv run python -m mongo_atlas_sdk     # 等价的模块入口
 | `make lock` | 更新 `uv.lock` |
 | `uv run mongo-atlas crawl` | 抓取 OpenAPI 文档到 `.data/api_docs.json` |
 | `uv run mongo-atlas normalize` | 归一化到 `.data/normalized_api_docs.json` |
-| `uv run mongo-atlas generate` | 生成 Python SDK（models / resources / client） |
+| `uv run mongo-atlas generate` | 生成 SDK 到 `pyatlassdk/`（models / resources / client） |
 
 ## 抓取 API 文档
 
@@ -215,16 +215,20 @@ uv run mongo-atlas normalize -i raw.json -o out.json
 
 ## 生成 Python SDK
 
+SDK 生成到独立仓库 [pyatlassdk](https://github.com/zhangyaoxing/pyatlassdk)，以 submodule 形式挂在本仓库下：
+
 ```bash
-uv run mongo-atlas generate                                     # 生成到 src/mongo_atlas_sdk
-uv run mongo-atlas generate -o /tmp/atlas_sdk --package atlas_sdk
+git clone --recurse-submodules git@github.com:zhangyaoxing/mongo-atlas-sdk.git
+uv run mongo-atlas generate                              # 写入 pyatlassdk/src/pyatlassdk
+uv run mongo-atlas generate -o /tmp/sdk --package sdk    # 生成到任意目录
 ```
 
-生成器读取 `.data/normalized_api_docs.json`，输出三部分：
+输出（`pyatlassdk/src/pyatlassdk/`）：
 
 - `models/`：每个类型一个模块的 pydantic v2 模型（1068 个）
 - `resources/`：55 个分类类，每个端点一个方法（526 个）
 - `client.py`：`AtlasClient`，聚合所有资源并使用 httpx Digest 认证
+- `__init__.py` / `py.typed`：包入口与类型标记
 
 生成规则：
 
@@ -237,8 +241,8 @@ uv run mongo-atlas generate -o /tmp/atlas_sdk --package atlas_sdk
 使用：
 
 ```python
-from mongo_atlas_sdk.client import AtlasClient
-from mongo_atlas_sdk.models.cluster_description20240805 import ClusterDescription20240805
+from pyatlassdk import AtlasClient
+from pyatlassdk.models.cluster_description20240805 import ClusterDescription20240805
 
 with AtlasClient(public_key="...", private_key="...") as client:
     cluster = client.clusters.create_group_cluster(
@@ -250,34 +254,33 @@ with AtlasClient(public_key="...", private_key="...") as client:
 说明：
 
 - 生成是幂等的；重复执行结果一致。
-- `models/`、`resources/`、`client.py` 归生成器所有，手改会在下次生成时被覆盖。
-- 这些目录已在 `pyproject.toml` 中排除出 ruff / mypy（`force-exclude` 让 pre-commit 也遵守该规则）。
+- `pyatlassdk/src/pyatlassdk/` 归生成器所有，手改会在下次生成时被覆盖。
+- `pyatlassdk` 的 `pyproject.toml` 已将生成目录排除出 ruff；构建与发布也在该仓库内完成。
+- 提交顺序：先在 `pyatlassdk/` 提交并推送，再在主仓库提交新的 submodule 指针。
 - `normalized_api_docs.json` 中缺失 `required` 的字段会生成可选参数，这是 spec 的真实情况，不是生成器推断。
 
 ## 目录结构
 
 ```
 .
-├── src/mongo_atlas_sdk/      # 包源码（src 布局，可安装/可发布）
+├── pyatlassdk/               # submodule：生成的 SDK（发布到 PyPI）
+├── src/mongo_atlas_sdk/      # 生成器（CLI + 抓取 + 归一化 + 代码生成）
 │   ├── __init__.py
 │   ├── __main__.py           # python -m mongo_atlas_sdk
 │   ├── cli.py                # console script: mongo-atlas
 │   ├── config.py             # 环境变量配置
 │   ├── crawler/              # OpenAPI → api_docs.json
-│   │   ├── loader.py         # 下载 / 读取 / 写出
-│   │   └── extract.py        # 抽取分类、端点、参数
+│   │   ├── loader.py
+│   │   └── extract.py
 │   ├── normalizer/           # api_docs.json → normalized_api_docs.json
-│   │   ├── schema.py         # $ref / allOf / oneOf 与类型归一化
-│   │   └── api.py            # 端点与参数的归一化
-│   ├── generator/            # normalized_api_docs.json → Python 代码
-│   │   ├── naming.py         # 类 / 字段 / 枚举成员命名
-│   │   ├── schema.py         # 匿名类型提升与注解渲染
-│   │   ├── models.py         # pydantic 模型
-│   │   ├── resources.py      # 资源类与方法
-│   │   └── client.py         # AtlasClient
-│   ├── client.py             # 生成：AtlasClient
-│   ├── models/               # 生成：1068 个模型模块
-│   ├── resources/            # 生成：55 个资源模块
+│   │   ├── schema.py
+│   │   └── api.py
+│   ├── generator/            # normalized_api_docs.json → pyatlassdk
+│   │   ├── naming.py
+│   │   ├── schema.py
+│   │   ├── models.py
+│   │   ├── resources.py
+│   │   └── client.py
 │   └── py.typed              # 自带类型信息（PEP 561）
 ├── tests/                    # pytest 测试（fixtures/mini_openapi.json）
 ├── .data/                    # 抓取产物（git-ignored）
@@ -315,7 +318,16 @@ uv run pre-commit run --all-files
 
 ## 发布
 
+SDK 在 `pyatlassdk/` 子模块中构建与发布：
+
 ```bash
+cd pyatlassdk
 uv build
 uv publish   # 需要 PyPI token（或 uv publish --token ...）
+```
+
+主仓库只发布生成器 CLI（可选）：
+
+```bash
+uv build
 ```
