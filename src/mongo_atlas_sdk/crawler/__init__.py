@@ -8,7 +8,7 @@ from mongo_atlas_sdk.crawler.loader import (
     SpecSourceError,
     fetch_spec,
     load_spec,
-    write_api_docs,
+    write_json_document,
 )
 
 __all__ = [
@@ -17,5 +17,5 @@ __all__ = [
     "extract_api_docs",
     "fetch_spec",
     "load_spec",
-    "write_api_docs",
+    "write_json_document",
 ]

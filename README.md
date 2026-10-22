@@ -16,6 +16,7 @@ uv sync                              # 创建 .venv 并安装依赖
 uv run mongo-atlas --version         # 查看版本
 uv run mongo-atlas config            # 查看当前生效配置（密钥自动打码）
 uv run mongo-atlas crawl             # 抓取 API 文档到 .data/api_docs.json
+uv run mongo-atlas normalize         # 归一化为 .data/normalized_api_docs.json
 uv run python -m mongo_atlas_sdk     # 等价的模块入口
 ```
 
@@ -32,6 +33,8 @@ uv run python -m mongo_atlas_sdk     # 等价的模块入口
 | `make check` | 与 CI 一致的全套检查 |
 | `make build` | 构建 sdist / wheel 到 `dist/` |
 | `make lock` | 更新 `uv.lock` |
+| `uv run mongo-atlas crawl` | 抓取 OpenAPI 文档到 `.data/api_docs.json` |
+| `uv run mongo-atlas normalize` | 归一化到 `.data/normalized_api_docs.json` |
 
 ## 抓取 API 文档
 
@@ -58,6 +61,9 @@ uv run mongo-atlas crawl -o /tmp/docs.json     # 自定义输出路径
     "api_version": "2.0",
     "openapi": "3.0.1",
     "spec_sha256": "..."
+  },
+  "schemas": {
+    "ClusterDescription20240805": {"type": "object", "properties": {"...": "..."}}
   },
   "categories": [
     {
@@ -97,7 +103,86 @@ uv run mongo-atlas crawl -o /tmp/docs.json     # 自定义输出路径
 - Path / Query 参数直接来自 spec；参数级 `$ref` 会解析，同名参数以 operation 级覆盖 path 级。
 - Body 参数取 schema 顶层字段；数组 Body 取 `items` 的字段。`schema` 保留原始 `$ref`，供后续归一化阶段展开 `allOf` / `oneOf` 和嵌套对象。
 - 少数 `oneOf` 组合的 Body（如 `GroupAlertsConfig`）没有单一字段列表，只保留原始 schema。
+- `schemas` 保存 spec 的全部原始 schema 定义，使 `normalize` 只依赖 `api_docs.json` 即可解析 `$ref`。
 - `meta.spec_sha256` 用于确认归一化结果对应哪个版本的文档。
+
+## 归一化 API 文档
+
+```bash
+uv run mongo-atlas normalize                    # 读取 .data/api_docs.json 并写出
+uv run mongo-atlas normalize -i raw.json -o out.json
+```
+
+归一化阶段做这些事：
+
+- 解析 `$ref`（含别名链与循环检测），只保留从请求体可达的类型；
+- 合并 `allOf` 的属性、`required` 与描述；
+- `oneOf` / `anyOf` 转为 `union`，保留 `discriminator`；
+- 类型名统一为 PascalCase，同名冲突追加数字后缀；
+- 数组、内联对象、`additionalProperties`、`enum`、`nullable`、`format` / `default` 全部转成封闭的类型表达式。
+
+输出结构（`.data/normalized_api_docs.json`）：
+
+```json
+{
+  "meta": {
+    "source": "...",
+    "spec_sha256": "...",
+    "normalized_at": "2026-10-22T12:32:00+00:00",
+    "stats": {"categories": 55, "endpoints": 526, "types": 649},
+    "warnings": []
+  },
+  "types": {
+    "ClusterDescription20240805": {
+      "name": "ClusterDescription20240805",
+      "kind": "object",
+      "description": "...",
+      "properties": {
+        "name": {
+          "required": false,
+          "description": "...",
+          "type": {"kind": "primitive", "type": "string"}
+        },
+        "clusterType": {
+          "required": false,
+          "type": {
+            "kind": "enum",
+            "type": "string",
+            "values": ["REPLICASET", "SHARDED", "GEOSHARDED"]
+          }
+        }
+      },
+      "additional_properties": null
+    }
+  },
+  "categories": [
+    {
+      "name": "Clusters",
+      "endpoints": [
+        {
+          "operation_id": "createGroupCluster",
+          "method": "POST",
+          "path": "/api/atlas/v2/groups/{groupId}/clusters",
+          "path_parameters": [
+            {"name": "groupId", "required": true, "description": "...", "type": {"kind": "primitive", "type": "string"}}
+          ],
+          "query_parameters": [],
+          "request_body": {
+            "content_type": "application/vnd.atlas.2024-10-23+json",
+            "required": true,
+            "description": "...",
+            "type": {"kind": "reference", "name": "ClusterDescription20240805"}
+          }
+        }
+      ]
+    }
+  ]
+}
+```
+
+类型表达式的 `kind` 取值：`primitive`、`enum`、`array`、`object`、`reference`、`union`、`any`。生成器只需处理这一套封闭结构，不再需要理解 OpenAPI 的 `$ref` / `allOf`。
+
+> 注意：`required` 完全忠于 spec。个别 Body schema（如 `ClusterDescription20240805`）在官方 spec 中没有声明 `required` 数组，归一化结果也会是 `false`，不会自行推断。
 
 ## 目录结构
 
@@ -111,6 +196,9 @@ uv run mongo-atlas crawl -o /tmp/docs.json     # 自定义输出路径
 │   ├── crawler/              # OpenAPI → api_docs.json
 │   │   ├── loader.py         # 下载 / 读取 / 写出
 │   │   └── extract.py        # 抽取分类、端点、参数
+│   ├── normalizer/           # api_docs.json → normalized_api_docs.json
+│   │   ├── schema.py         # $ref / allOf / oneOf 与类型归一化
+│   │   └── api.py            # 端点与参数的归一化
 │   └── py.typed              # 自带类型信息（PEP 561）
 ├── tests/                    # pytest 测试（fixtures/mini_openapi.json）
 ├── .data/                    # 抓取产物（git-ignored）

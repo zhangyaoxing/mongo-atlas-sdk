@@ -62,7 +62,7 @@ def load_spec(path: Path) -> dict[str, Any]:
     return _parse(payload)
 
 
-def write_api_docs(document: dict[str, Any], path: Path) -> None:
+def write_json_document(document: dict[str, Any], path: Path) -> None:
     """Write the intermediate document as UTF-8 JSON, creating parent folders."""
     path.parent.mkdir(parents=True, exist_ok=True)
     text = json.dumps(document, ensure_ascii=False, indent=2)

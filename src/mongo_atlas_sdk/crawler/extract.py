@@ -214,6 +214,10 @@ def extract_api_docs(
     ]
 
     info = spec.get("info") or {}
+    components = spec.get("components")
+    schemas = components.get("schemas") if isinstance(components, Mapping) else None
+    if not isinstance(schemas, Mapping):
+        schemas = {}
     return {
         "meta": {
             "source": source_url,
@@ -223,5 +227,6 @@ def extract_api_docs(
             "openapi": spec.get("openapi"),
             "spec_sha256": _spec_digest(spec),
         },
+        "schemas": dict(schemas),
         "categories": categories,
     }

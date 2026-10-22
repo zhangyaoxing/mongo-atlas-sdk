@@ -34,6 +34,7 @@ def test_categories_follow_tag_order_with_untagged_last(docs: dict[str, Any]) ->
     assert docs["meta"]["openapi"] == "3.0.1"
     assert docs["meta"]["fetched_at"] == FIXED_TIME
     assert len(docs["meta"]["spec_sha256"]) == 64
+    assert set(docs["schemas"]) == {"Cluster", "ProviderSettings"}
 
 
 def test_endpoints_are_sorted_by_path_and_method(docs: dict[str, Any]) -> None:
