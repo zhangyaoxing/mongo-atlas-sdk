@@ -2,60 +2,60 @@
 
 # mongo-atlas-sdk
 
-MongoDB Atlas SDK 生成器与命令行工具（Python ≥ 3.10）。生成产物发布为 [pyatlassdk](https://pypi.org/project/pyatlassdk/)。
+MongoDB Atlas SDK generator and CLI (Python ≥ 3.10). The generated SDK is published as [pyatlassdk](https://pypi.org/project/pyatlassdk/).
 
-## 环境要求
+## Requirements
 
 - Python 3.10+
-- [uv](https://docs.astral.sh/uv/)（依赖与虚拟环境管理）
+- [uv](https://docs.astral.sh/uv/) for dependency and virtualenv management
 
-## 快速开始
+## Quick start
 
 ```bash
-uv sync                # 创建 .venv 并安装依赖
-make pipeline          # 抓取 → 清洗 → 生成 SDK（一条命令）
-# 也可以单步执行：
+uv sync                # create .venv and install dependencies
+make pipeline          # crawl -> normalize -> generate, in one command
+# or run each step separately:
 make crawl             # .data/api_docs.json
 make normalize         # .data/normalized_api_docs.json
 make pygen             # pyatlassdk/src/pyatlassdk
 ```
 
-## 常用命令
+## Common commands
 
-| 命令 | 说明 |
+| Command | Description |
 | --- | --- |
-| `make install` / `uv sync` | 安装（含 dev 依赖组） |
-| `make lint` | ruff 代码检查 |
-| `make format` | ruff 格式化并自动修复 |
-| `make typecheck` | mypy 严格模式类型检查 |
-| `make test` | pytest |
-| `make coverage` | pytest + 覆盖率报告 |
-| `make check` | 与 CI 一致的全套检查 |
-| `make build` | 构建 sdist / wheel 到 `dist/` |
-| `make lock` | 更新 `uv.lock` |
-| `make crawl` | 抓取最新 OpenAPI 文档到 `.data/api_docs.json` |
-| `make normalize` | 清洗为 `.data/normalized_api_docs.json` |
-| `make pygen` | 用模板生成 SDK 到 `pyatlassdk/` |
-| `make pipeline` | 依次执行 crawl → normalize → pygen |
-| `uv run mongo-atlas crawl` | CLI：抓取 |
-| `uv run mongo-atlas normalize` | CLI：清洗 |
-| `uv run mongo-atlas pygen` | CLI：生成 |
+| `make install` / `uv sync` | Install dependencies (including the dev group) |
+| `make lint` | Run ruff |
+| `make format` | Format and auto-fix with ruff |
+| `make typecheck` | Run mypy in strict mode |
+| `make test` | Run pytest |
+| `make coverage` | Run pytest with a coverage report |
+| `make check` | Run the same checks as CI |
+| `make build` | Build sdist / wheel into `dist/` |
+| `make lock` | Refresh `uv.lock` |
+| `make crawl` | Fetch the latest OpenAPI document into `.data/api_docs.json` |
+| `make normalize` | Clean it into `.data/normalized_api_docs.json` |
+| `make pygen` | Render the SDK from templates into `pyatlassdk/` |
+| `make pipeline` | Run crawl → normalize → pygen |
+| `uv run mongo-atlas crawl` | CLI: crawl |
+| `uv run mongo-atlas normalize` | CLI: normalize |
+| `uv run mongo-atlas pygen` | CLI: generate |
 
-## 抓取 API 文档
+## Crawling the API docs
 
-Atlas 文档站（`/docs/api/doc/atlas-admin-api-v2`）的正文本身由官方 OpenAPI 文档渲染而来，页面提供了同源下载：
+The Atlas documentation site (`/docs/api/doc/atlas-admin-api-v2`) renders its content from the official OpenAPI document, which is offered as a download at the same source:
 
-- `https://www.mongodb.com/docs/api/doc/atlas-admin-api-v2.json`（OpenAPI 3.0.1，约 4.7 MB）
+- `https://www.mongodb.com/docs/api/doc/atlas-admin-api-v2.json` (OpenAPI 3.0.1, about 4.7 MB)
 
-因此抓取直接解析这份 JSON，而不是用 Playwright 解析渲染后的 DOM：字段（`type` / `required` / `description`）完全一致，但只需一次请求、结构稳定。实测单次抓取约 2 秒。
+The crawler therefore parses this JSON directly instead of rendering the page with Playwright: the fields (`type` / `required` / `description`) are identical, but only one request is needed and the structure is stable. A full crawl takes about 2 seconds.
 
 ```bash
-uv run mongo-atlas crawl                       # 下载并写入 .data/api_docs.json
-uv run mongo-atlas crawl --spec local.json     # 使用本地 OpenAPI 文件（离线/测试）
-uv run mongo-atlas crawl -o /tmp/docs.json     # 自定义输出路径
+uv run mongo-atlas crawl                       # download and write .data/api_docs.json
+uv run mongo-atlas crawl --spec local.json     # use a local OpenAPI file (offline/testing)
+uv run mongo-atlas crawl -o /tmp/docs.json     # custom output path
 ```
 
-产物 `.data/api_docs.json`（`.data/` 已被 `.gitignore` 忽略）：
+Output `.data/api_docs.json` (`.data/` is git-ignored):
 
 ```json
 {
@@ -116,32 +116,32 @@ uv run mongo-atlas crawl -o /tmp/docs.json     # 自定义输出路径
 }
 ```
 
-约定：
+Conventions:
 
-- 一级分类对应 spec 的 `tags`，即文档页面的分类标题（未来类名）；`operation_id` 是稳定的方法名来源，`summary` 对应端点页标题。
-- Path / Query 参数直接来自 spec；参数级 `$ref` 会解析，同名参数以 operation 级覆盖 path 级。
-- Body 参数取 schema 顶层字段；数组 Body 取 `items` 的字段。`schema` 保留原始 `$ref`，供后续归一化阶段展开 `allOf` / `oneOf` 和嵌套对象。
-- 少数 `oneOf` 组合的 Body（如 `GroupAlertsConfig`）没有单一字段列表，只保留原始 schema。
-- `responses` 按状态码排序（数字升序，`default` 排最后），每个状态码保留全部媒体类型及其原始 schema；错误响应（401/403/404/429/500）也会保留。
-- `schemas` 保存 spec 的全部原始 schema 定义，使 `normalize` 只依赖 `api_docs.json` 即可解析 `$ref`。
-- `meta.spec_sha256` 用于确认归一化结果对应哪个版本的文档。
+- The top-level categories mirror the spec `tags`, which are the section titles on the docs site (and the future class names); `operation_id` is the stable source for method names and `summary` matches the endpoint page title.
+- Path and query parameters come straight from the spec; parameter-level `$ref` values are resolved and operation-level parameters override path-level ones with the same name.
+- Body parameters are the top-level schema properties; for array bodies they come from `items`. The original `$ref` is kept in `schema` so the normalization stage can expand `allOf` / `oneOf` and nested objects later.
+- A few `oneOf` bodies (such as `GroupAlertsConfig`) have no single property list, so only the raw schema is kept.
+- `responses` are sorted by status code (numeric ascending, `default` last). Every status keeps all media types and their original schemas; error responses (401/403/404/429/500) are included.
+- `schemas` holds every raw schema definition from the spec, so `normalize` can resolve `$ref` from `api_docs.json` alone.
+- `meta.spec_sha256` ties the normalized output to the exact version of the docs.
 
-## 归一化 API 文档
+## Normalizing the API docs
 
 ```bash
-uv run mongo-atlas normalize                    # 读取 .data/api_docs.json 并写出
+uv run mongo-atlas normalize                    # read .data/api_docs.json and write the result
 uv run mongo-atlas normalize -i raw.json -o out.json
 ```
 
-归一化阶段做这些事：
+The normalization stage:
 
-- 解析 `$ref`（含别名链与循环检测），只保留从请求体或响应可达的类型；
-- 合并 `allOf` 的属性、`required` 与描述；
-- `oneOf` / `anyOf` 转为 `union`，保留 `discriminator`；
-- 类型名统一为 PascalCase，同名冲突追加数字后缀；
-- 数组、内联对象、`additionalProperties`、`enum`、`nullable`、`format` / `default` 全部转成封闭的类型表达式。
+- resolves `$ref` (including alias chains and cycle detection) and keeps only types reachable from request bodies or responses;
+- merges `allOf` properties, `required` flags, and descriptions;
+- turns `oneOf` / `anyOf` into `union` types and preserves `discriminator`;
+- normalizes type names to PascalCase and appends a numeric suffix on collisions;
+- converts arrays, inline objects, `additionalProperties`, `enum`, `nullable`, `format` / `default` into closed type expressions.
 
-输出结构（`.data/normalized_api_docs.json`）：
+Output structure (`.data/normalized_api_docs.json`):
 
 ```json
 {
@@ -212,38 +212,38 @@ uv run mongo-atlas normalize -i raw.json -o out.json
 }
 ```
 
-类型表达式的 `kind` 取值：`primitive`、`enum`、`array`、`object`、`reference`、`union`、`any`。生成器只需处理这一套封闭结构，不再需要理解 OpenAPI 的 `$ref` / `allOf`。
+The `kind` of a type expression is one of `primitive`, `enum`, `array`, `object`, `reference`, `union`, `any`. The generator only has to understand this closed set and no longer needs to know about OpenAPI `$ref` / `allOf`.
 
-> 注意：`required` 完全忠于 spec。个别 Body schema（如 `ClusterDescription20240805`）在官方 spec 中没有声明 `required` 数组，归一化结果也会是 `false`，不会自行推断。
+> Note: `required` follows the spec exactly. A few body schemas (such as `ClusterDescription20240805`) do not declare a `required` array in the official spec, so their normalized fields are `false`. The normalizer does not infer them.
 
-## 生成 Python SDK
+## Generating the Python SDK
 
-SDK 生成到独立仓库 [pyatlassdk](https://github.com/zhangyaoxing/pyatlassdk)，以 submodule 形式挂在本仓库下：
+The SDK is generated into the separate [pyatlassdk](https://github.com/zhangyaoxing/pyatlassdk) repository, which is attached to this repository as a submodule:
 
 ```bash
 git clone --recurse-submodules git@github.com:zhangyaoxing/mongo-atlas-sdk.git
-make pygen                                               # 写入 pyatlassdk/src/pyatlassdk
-uv run mongo-atlas pygen -o /tmp/sdk --package sdk       # 生成到任意目录
+make pygen                                               # writes pyatlassdk/src/pyatlassdk
+uv run mongo-atlas pygen -o /tmp/sdk --package sdk       # generate into any directory
 ```
 
-生成完全由 Jinja2 模板驱动，模板位于 `src/mongo_atlas_sdk/generator/templates/`，输入只有 `normalized_api_docs.json`。同样的输入会得到逐字节相同的输出，不涉及任何模型推断或人工修改。
+Generation is fully driven by Jinja2 templates in `src/mongo_atlas_sdk/generator/templates/`, with `normalized_api_docs.json` as the only input. The same input produces byte-identical output; there is no model inference or manual editing involved.
 
-输出（`pyatlassdk/src/pyatlassdk/`）：
+Output (`pyatlassdk/src/pyatlassdk/`):
 
-- `models/`：每个类型一个模块的 pydantic v2 模型（1068 个）
-- `resources/`：55 个分类类，每个端点一个方法（526 个）
-- `client.py`：`AtlasClient`，聚合所有资源并使用 httpx Digest 认证
-- `__init__.py` / `py.typed`：包入口与类型标记
+- `models/`: one pydantic v2 model module per type (1068 in total)
+- `resources/`: 55 resource classes with one method per endpoint (526 methods)
+- `client.py`: `AtlasClient`, which aggregates all resources and uses httpx Digest authentication
+- `__init__.py` / `py.typed`: package entry point and typing marker
 
-生成规则：
+Generation rules:
 
-- object → `BaseModel`；命名 enum → `str, Enum`；union / alias → `TypeAlias`
-- 内联枚举 → `Literal[...]`；内联匿名对象 → 按父类型 + 属性路径合成类名（如 `ApiErrorParametersItem`）
-- 字段名转 snake_case，与原字段名不同时自动加 `Field(alias=...)`；`_id`、`2dsphereIndexVersion` 等非法标识符也能正确映射
-- 自引用类型在模块末尾调用 `model_rebuild()`
-- 枚举成员清洗：`<` → `LT`、`>` → `GT`，非法或重复名追加后缀
+- object → `BaseModel`; named enum → `str, Enum`; union / alias → `TypeAlias`
+- inline enums → `Literal[...]`; inline anonymous objects get a synthesized class name based on the parent type and property path (for example `ApiErrorParametersItem`)
+- field names become snake_case and automatically get `Field(alias=...)` when they differ from the wire name; invalid identifiers such as `_id` and `2dsphereIndexVersion` are mapped correctly
+- self-referencing types call `model_rebuild()` at the end of the module
+- enum members are sanitized: `<` → `LT`, `>` → `GT`, and invalid or duplicate names get a suffix
 
-使用：
+Usage:
 
 ```python
 from pyatlassdk import AtlasClient
@@ -256,84 +256,84 @@ with AtlasClient(public_key="...", private_key="...") as client:
     )
 ```
 
-说明：
+Notes:
 
-- 生成是幂等的；重复执行结果一致。
-- `pyatlassdk/src/pyatlassdk/` 归生成器所有，手改会在下次生成时被覆盖。
-- `pyatlassdk` 的 `pyproject.toml` 已将生成目录排除出 ruff；构建与发布也在该仓库内完成。
-- 提交顺序：先在 `pyatlassdk/` 提交并推送，再在主仓库提交新的 submodule 指针。
-- `normalized_api_docs.json` 中缺失 `required` 的字段会生成可选参数，这是 spec 的真实情况，不是生成器推断。
+- Generation is idempotent; repeated runs produce the same result.
+- `pyatlassdk/src/pyatlassdk/` is owned by the generator; manual edits are overwritten on the next run.
+- The `pyatlassdk` `pyproject.toml` excludes the generated directories from ruff; build and publish happen in that repository too.
+- Commit order: commit and push in `pyatlassdk/` first, then commit the new submodule pointer here.
+- Fields without `required` in `normalized_api_docs.json` become optional parameters. That reflects the spec, not a generator assumption.
 
-## 目录结构
+## Project layout
 
 ```
 .
-├── pyatlassdk/               # submodule：生成的 SDK（发布到 PyPI）
-├── src/mongo_atlas_sdk/      # 生成器（CLI + 抓取 + 归一化 + 代码生成）
+├── pyatlassdk/               # submodule: the generated SDK (published to PyPI)
+├── src/mongo_atlas_sdk/      # generator (CLI + crawl + normalize + code generation)
 │   ├── __init__.py
 │   ├── __main__.py           # python -m mongo_atlas_sdk
 │   ├── cli.py                # console script: mongo-atlas
-│   ├── config.py             # 环境变量配置
-│   ├── crawler/              # OpenAPI → api_docs.json
+│   ├── config.py             # environment-based settings
+│   ├── crawler/              # OpenAPI -> api_docs.json
 │   │   ├── loader.py
 │   │   └── extract.py
-│   ├── normalizer/           # api_docs.json → normalized_api_docs.json
+│   ├── normalizer/           # api_docs.json -> normalized_api_docs.json
 │   │   ├── schema.py
 │   │   └── api.py
-│   ├── generator/            # normalized_api_docs.json → pyatlassdk
-│   │   ├── naming.py         # 命名与标识符清洗
-│   │   ├── schema.py         # 匿名类型提升与注解
-│   │   ├── models.py         # 模型渲染上下文
-│   │   ├── resources.py      # 资源渲染上下文
-│   │   ├── client.py         # 客户端渲染上下文
-│   │   ├── templating.py     # Jinja2 环境
-│   │   └── templates/        # .py.j2 模板
-│   └── py.typed              # 自带类型信息（PEP 561）
-├── tests/                    # pytest 测试（fixtures/mini_openapi.json）
-├── .data/                    # 抓取产物（git-ignored）
-├── pyproject.toml            # 元数据 + ruff/mypy/pytest/coverage 配置
-├── uv.lock                   # 锁定的依赖版本（需提交）
+│   ├── generator/            # normalized_api_docs.json -> pyatlassdk
+│   │   ├── naming.py         # naming and identifier sanitizing
+│   │   ├── schema.py         # inline type hoisting and annotations
+│   │   ├── models.py         # model rendering context
+│   │   ├── resources.py      # resource rendering context
+│   │   ├── client.py         # client rendering context
+│   │   ├── templating.py     # Jinja2 environment
+│   │   └── templates/        # .py.j2 templates
+│   └── py.typed              # PEP 561 typing marker
+├── tests/                    # pytest tests (fixtures/mini_openapi.json)
+├── .data/                    # crawl artifacts (git-ignored)
+├── pyproject.toml            # metadata + ruff/mypy/pytest/coverage config
+├── uv.lock                   # locked dependency versions (commit this)
 ├── Makefile
 ├── .pre-commit-config.yaml
 ├── .github/workflows/ci.yml
 └── .env.example
 ```
 
-## 配置
+## Configuration
 
 ```bash
-cp .env.example .env   # .env 已被 .gitignore 忽略
+cp .env.example .env   # .env is git-ignored
 ```
 
-| 变量 | 默认值 | 说明 |
+| Variable | Default | Description |
 | --- | --- | --- |
-| `MONGO_ATLAS_PUBLIC_KEY` | – | Atlas API 公钥 |
-| `MONGO_ATLAS_PRIVATE_KEY` | – | Atlas API 私钥 |
-| `MONGO_ATLAS_BASE_URL` | `https://cloud.mongodb.com/api/atlas/v2` | API 地址 |
-| `LOG_LEVEL` | `INFO` | 日志级别，自动转大写 |
+| `MONGO_ATLAS_PUBLIC_KEY` | – | Atlas API public key |
+| `MONGO_ATLAS_PRIVATE_KEY` | – | Atlas API private key |
+| `MONGO_ATLAS_BASE_URL` | `https://cloud.mongodb.com/api/atlas/v2` | API base URL |
+| `LOG_LEVEL` | `INFO` | Log level, normalized to uppercase |
 
-当前实现直接读取 `os.environ`，因此运行前需 `export` 或显式加载 `.env`。若希望自动加载 `.env`，可加入 `python-dotenv` 并在 `cli.py` 入口调用 `load_dotenv()`。
+The current implementation reads `os.environ` directly, so values must be exported or `.env` must be loaded explicitly. To load `.env` automatically, add `python-dotenv` and call `load_dotenv()` at the start of `cli.py`.
 
-## 开发
+## Development
 
 ```bash
-uv run pre-commit install   # 安装 git 钩子
+uv run pre-commit install   # install the git hooks
 uv run pre-commit run --all-files
 ```
 
-本地 `mypy` / `pytest` 直接通过 `uv run` 调用即可，无需手动激活虚拟环境。
+Run `mypy` / `pytest` through `uv run`; there is no need to activate the virtualenv manually.
 
-## 发布
+## Publishing
 
-SDK 在 `pyatlassdk/` 子模块中构建与发布：
+The SDK is built and published from the `pyatlassdk/` submodule:
 
 ```bash
 cd pyatlassdk
 uv build
-uv publish   # 需要 PyPI token（或 uv publish --token ...）
+uv publish   # requires a PyPI token (or uv publish --token ...)
 ```
 
-主仓库只发布生成器 CLI（可选）：
+The main repository only publishes the generator CLI, if desired:
 
 ```bash
 uv build
