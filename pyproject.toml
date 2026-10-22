@@ -1,0 +1,99 @@
+[build-system]
+requires = ["hatchling>=1.27"]
+build-backend = "hatchling.build"
+
+[project]
+name = "mongo-atlas-sdk"
+version = "0.1.0"
+description = "MongoDB Atlas SDK and command line tool."
+readme = "README.md"
+requires-python = ">=3.10"
+license = "MIT"
+license-files = ["LICENSE"]
+authors = [{ name = "Yaoxing" }]
+keywords = ["mongodb", "atlas", "sdk", "cli"]
+classifiers = [
+  "Development Status :: 3 - Alpha",
+  "Environment :: Console",
+  "Intended Audience :: Developers",
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3 :: Only",
+  "Programming Language :: Python :: 3.10",
+  "Programming Language :: Python :: 3.11",
+  "Programming Language :: Python :: 3.12",
+  "Programming Language :: Python :: 3.13",
+  "Programming Language :: Python :: 3.14",
+  "Typing :: Typed",
+]
+dependencies = []
+
+[project.scripts]
+mongo-atlas = "mongo_atlas_sdk.cli:main"
+
+[project.urls]
+Homepage = "https://github.com/zhangyaoxing/mongo-atlas-sdk"
+Repository = "https://github.com/zhangyaoxing/mongo-atlas-sdk"
+Issues = "https://github.com/zhangyaoxing/mongo-atlas-sdk/issues"
+
+# PEP 735 dependency groups: `uv sync` installs the `dev` group by default.
+[dependency-groups]
+dev = [
+  "build>=1.2.2",
+  "mypy>=1.13",
+  "pre-commit>=4.0",
+  "pytest>=8.3",
+  "pytest-cov>=6.0",
+  "ruff>=0.9",
+]
+
+[tool.uv]
+default-groups = ["dev"]
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/mongo_atlas_sdk"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py310"
+src = ["src", "tests"]
+extend-exclude = ["dist", "build"]
+
+[tool.ruff.lint]
+select = ["E", "W", "F", "I", "UP", "B", "SIM", "C4", "PTH", "RUF"]
+ignore = ["E501"]  # kept out of the way; formatting is handled by `ruff format`
+
+[tool.ruff.lint.isort]
+known-first-party = ["mongo_atlas_sdk"]
+
+[tool.ruff.format]
+quote-style = "double"
+docstring-code-format = true
+
+[tool.mypy]
+python_version = "3.10"
+files = ["src", "tests"]
+strict = true
+pretty = true
+show_error_codes = true
+warn_unreachable = true
+
+[[tool.mypy.overrides]]
+module = "tests.*"
+disallow_untyped_defs = false
+
+[tool.pytest.ini_options]
+minversion = "8.0"
+addopts = "-ra --strict-markers --strict-config"
+testpaths = ["tests"]
+
+[tool.coverage.run]
+branch = true
+source = ["mongo_atlas_sdk"]
+
+[tool.coverage.report]
+show_missing = true
+skip_covered = true
+exclude_also = [
+  "if TYPE_CHECKING:",
+  "if __name__ == .__main__.:",
+]
