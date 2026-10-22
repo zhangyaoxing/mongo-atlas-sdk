@@ -1,3 +1,5 @@
+[![CI](https://github.com/zhangyaoxing/mongo-atlas-sdk/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/zhangyaoxing/mongo-atlas-sdk/actions/workflows/ci.yml)
+
 # mongo-atlas-sdk
 
 MongoDB Atlas SDK 与命令行工具（Python ≥ 3.10）。
