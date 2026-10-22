@@ -32,6 +32,26 @@ def _normalize_body(normalizer: SchemaNormalizer, body: Any) -> dict[str, Any] |
     }
 
 
+def _normalize_response(normalizer: SchemaNormalizer, response: Any) -> dict[str, Any]:
+    if not isinstance(response, dict):
+        response = {}
+    content: list[dict[str, Any]] = []
+    for item in response.get("content") or []:
+        if not isinstance(item, dict):
+            continue
+        content.append(
+            {
+                "content_type": item.get("content_type") or "",
+                "type": normalizer.expression(item.get("schema") or {}),
+            }
+        )
+    return {
+        "status": str(response.get("status") or ""),
+        "description": response.get("description") or "",
+        "content": content,
+    }
+
+
 def _normalize_endpoint(normalizer: SchemaNormalizer, endpoint: Any) -> dict[str, Any]:
     if not isinstance(endpoint, dict):
         endpoint = {}
@@ -54,6 +74,10 @@ def _normalize_endpoint(normalizer: SchemaNormalizer, endpoint: Any) -> dict[str
             for parameter in parameters.get("query") or []
         ],
         "request_body": _normalize_body(normalizer, endpoint.get("request_body")),
+        "responses": [
+            _normalize_response(normalizer, response)
+            for response in endpoint.get("responses") or []
+        ],
     }
 
 

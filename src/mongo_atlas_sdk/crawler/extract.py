@@ -129,6 +129,51 @@ def _build_body(
     }
 
 
+def _status_sort_key(status: str) -> tuple[int, Any]:
+    if status.isdigit():
+        return (0, int(status))
+    return (1, status)
+
+
+def _build_responses(spec: Mapping[str, Any], operation: Mapping[str, Any]) -> list[dict[str, Any]]:
+    raw_responses = operation.get("responses") or {}
+    if not isinstance(raw_responses, Mapping):
+        return []
+
+    responses: list[dict[str, Any]] = []
+    for status, raw_response in raw_responses.items():
+        if not isinstance(raw_response, Mapping):
+            continue
+        response = _resolve_if_ref(spec, raw_response)
+        content: list[dict[str, Any]] = []
+        media_types = response.get("content")
+        if isinstance(media_types, Mapping):
+            for content_type, media in media_types.items():
+                if not isinstance(media, Mapping):
+                    continue
+                schema = media.get("schema")
+                if not isinstance(schema, Mapping):
+                    schema = {}
+                ref = schema.get("$ref")
+                content.append(
+                    {
+                        "content_type": content_type,
+                        "schema_ref": ref.rsplit("/", 1)[-1] if isinstance(ref, str) else None,
+                        "schema": schema,
+                    }
+                )
+        responses.append(
+            {
+                "status": str(status),
+                "description": response.get("description") or "",
+                "content": content,
+            }
+        )
+
+    responses.sort(key=lambda item: _status_sort_key(item["status"]))
+    return responses
+
+
 def _build_endpoint(
     spec: Mapping[str, Any],
     path: str,
@@ -165,6 +210,7 @@ def _build_endpoint(
         "tags": list(operation.get("tags") or []),
         "parameters": grouped,
         "request_body": request_body,
+        "responses": _build_responses(spec, operation),
     }
 
 

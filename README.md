@@ -89,7 +89,21 @@ uv run mongo-atlas crawl -o /tmp/docs.json     # 自定义输出路径
             "description": "...",
             "schema_ref": "ClusterDescription20240805",
             "schema": {"$ref": "#/components/schemas/ClusterDescription20240805"}
-          }
+          },
+          "responses": [
+            {
+              "status": "200",
+              "description": "OK",
+              "content": [
+                {
+                  "content_type": "application/vnd.atlas.2024-08-05+json",
+                  "schema_ref": "PaginatedClusterDescription20240805",
+                  "schema": {"$ref": "#/components/schemas/PaginatedClusterDescription20240805"}
+                }
+              ]
+            },
+            {"status": "401", "description": "Unauthorized.", "content": []}
+          ]
         }
       ]
     }
@@ -103,6 +117,7 @@ uv run mongo-atlas crawl -o /tmp/docs.json     # 自定义输出路径
 - Path / Query 参数直接来自 spec；参数级 `$ref` 会解析，同名参数以 operation 级覆盖 path 级。
 - Body 参数取 schema 顶层字段；数组 Body 取 `items` 的字段。`schema` 保留原始 `$ref`，供后续归一化阶段展开 `allOf` / `oneOf` 和嵌套对象。
 - 少数 `oneOf` 组合的 Body（如 `GroupAlertsConfig`）没有单一字段列表，只保留原始 schema。
+- `responses` 按状态码排序（数字升序，`default` 排最后），每个状态码保留全部媒体类型及其原始 schema；错误响应（401/403/404/429/500）也会保留。
 - `schemas` 保存 spec 的全部原始 schema 定义，使 `normalize` 只依赖 `api_docs.json` 即可解析 `$ref`。
 - `meta.spec_sha256` 用于确认归一化结果对应哪个版本的文档。
 
@@ -115,7 +130,7 @@ uv run mongo-atlas normalize -i raw.json -o out.json
 
 归一化阶段做这些事：
 
-- 解析 `$ref`（含别名链与循环检测），只保留从请求体可达的类型；
+- 解析 `$ref`（含别名链与循环检测），只保留从请求体或响应可达的类型；
 - 合并 `allOf` 的属性、`required` 与描述；
 - `oneOf` / `anyOf` 转为 `union`，保留 `discriminator`；
 - 类型名统一为 PascalCase，同名冲突追加数字后缀；
@@ -129,7 +144,7 @@ uv run mongo-atlas normalize -i raw.json -o out.json
     "source": "...",
     "spec_sha256": "...",
     "normalized_at": "2026-10-22T12:32:00+00:00",
-    "stats": {"categories": 55, "endpoints": 526, "types": 649},
+    "stats": {"categories": 55, "endpoints": 526, "types": 1024},
     "warnings": []
   },
   "types": {
@@ -172,7 +187,19 @@ uv run mongo-atlas normalize -i raw.json -o out.json
             "required": true,
             "description": "...",
             "type": {"kind": "reference", "name": "ClusterDescription20240805"}
-          }
+          },
+          "responses": [
+            {
+              "status": "200",
+              "description": "OK",
+              "content": [
+                {
+                  "content_type": "application/vnd.atlas.2024-08-05+json",
+                  "type": {"kind": "reference", "name": "PaginatedClusterDescription20240805"}
+                }
+              ]
+            }
+          ]
         }
       ]
     }

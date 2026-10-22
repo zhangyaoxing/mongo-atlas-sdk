@@ -51,6 +51,18 @@ def test_endpoints_are_sorted_by_path_and_method(docs: dict[str, Any]) -> None:
     assert get_cluster["tags"] == ["Clusters"]
 
 
+def test_responses_are_captured_in_status_order(docs: dict[str, Any]) -> None:
+    list_endpoint = docs["categories"][0]["endpoints"][0]
+
+    assert [response["status"] for response in list_endpoint["responses"]] == ["200", "401"]
+    ok = list_endpoint["responses"][0]
+    assert ok["description"] == "OK"
+    assert ok["content"][0]["content_type"] == "application/vnd.atlas.2024-10-23+json"
+    assert ok["content"][0]["schema_ref"] == "Cluster"
+    assert ok["content"][0]["schema"] == {"$ref": "#/components/schemas/Cluster"}
+    assert list_endpoint["responses"][1]["content"] == []
+
+
 def test_path_parameters_are_inherited_and_overridden(docs: dict[str, Any]) -> None:
     list_endpoint, create_endpoint = docs["categories"][0]["endpoints"]
 

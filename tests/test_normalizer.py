@@ -14,6 +14,7 @@ def _docs(
     schemas: dict[str, Any],
     body_schema: dict[str, Any],
     parameters: dict[str, Any] | None = None,
+    responses: list[dict[str, Any]] | None = None,
 ) -> dict[str, Any]:
     return {
         "meta": {"source": "test://spec", "api_version": "2.0"},
@@ -39,6 +40,7 @@ def _docs(
                             "schema_ref": None,
                             "schema": body_schema,
                         },
+                        "responses": responses or [],
                     }
                 ],
             }
@@ -392,3 +394,28 @@ def test_cli_normalize_rejects_non_object(
 
     assert main(["normalize", "-i", str(path), "-o", str(tmp_path / "out.json")]) == 1
     assert "json object" in capsys.readouterr().err.lower()
+
+
+def test_responses_are_normalized() -> None:
+    schemas = {"Thing": {"type": "object", "properties": {"id": {"type": "string"}}}}
+    responses: list[dict[str, Any]] = [
+        {
+            "status": "200",
+            "description": "OK",
+            "content": [
+                {
+                    "content_type": "application/json",
+                    "schema_ref": "Thing",
+                    "schema": {"$ref": "#/components/schemas/Thing"},
+                }
+            ],
+        },
+        {"status": "204", "description": "No content", "content": []},
+    ]
+    docs = normalize_api_docs(_docs(schemas, {"type": "object"}, responses=responses))
+
+    normalized = _endpoint(docs)["responses"]
+    assert [response["status"] for response in normalized] == ["200", "204"]
+    assert normalized[0]["content"][0]["type"] == {"kind": "reference", "name": "Thing"}
+    assert normalized[1]["content"] == []
+    assert docs["meta"]["stats"]["types"] == 1

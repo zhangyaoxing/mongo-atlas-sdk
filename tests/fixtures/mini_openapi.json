@@ -39,7 +39,17 @@
         ],
         "responses": {
           "200": {
-            "description": "OK"
+            "description": "OK",
+            "content": {
+              "application/vnd.atlas.2024-10-23+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Cluster"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized."
           }
         }
       },
