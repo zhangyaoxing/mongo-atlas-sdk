@@ -3,10 +3,22 @@
 from __future__ import annotations
 
 import argparse
+import sys
 from collections.abc import Sequence
+from pathlib import Path
 
 from mongo_atlas_sdk import __version__
 from mongo_atlas_sdk.config import Settings
+from mongo_atlas_sdk.crawler import (
+    SPEC_URL,
+    SpecSourceError,
+    extract_api_docs,
+    fetch_spec,
+    load_spec,
+    write_api_docs,
+)
+
+DEFAULT_OUTPUT = Path(".data/api_docs.json")
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -32,7 +44,52 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="Print API keys in clear text (never use in shared logs).",
     )
+
+    crawl_parser = subparsers.add_parser(
+        "crawl",
+        help="Crawl the Atlas API docs into .data/api_docs.json.",
+        description=(
+            "Download the official Atlas OpenAPI document and project it onto the "
+            "raw intermediate structure used by the SDK generator."
+        ),
+    )
+    crawl_parser.add_argument(
+        "-o",
+        "--output",
+        type=Path,
+        default=DEFAULT_OUTPUT,
+        help="Output path (default: %(default)s).",
+    )
+    crawl_parser.add_argument(
+        "--source",
+        default=SPEC_URL,
+        help="OpenAPI document URL (default: %(default)s).",
+    )
+    crawl_parser.add_argument(
+        "--spec",
+        type=Path,
+        help="Read a local OpenAPI file instead of downloading it.",
+    )
     return parser
+
+
+def _crawl(args: argparse.Namespace) -> int:
+    try:
+        if args.spec is not None:
+            spec = load_spec(args.spec)
+            source = str(args.spec)
+        else:
+            spec = fetch_spec(args.source)
+            source = str(args.source)
+    except SpecSourceError as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 1
+
+    docs = extract_api_docs(spec, source_url=source)
+    write_api_docs(docs, args.output)
+    endpoints = sum(len(category["endpoints"]) for category in docs["categories"])
+    print(f"wrote {args.output} ({len(docs['categories'])} categories, {endpoints} endpoints)")
+    return 0
 
 
 def main(argv: Sequence[str] | None = None) -> int:
@@ -44,6 +101,9 @@ def main(argv: Sequence[str] | None = None) -> int:
         settings = Settings.from_env()
         print(settings.describe(show_secrets=bool(args.show_secrets)))
         return 0
+
+    if args.command == "crawl":
+        return _crawl(args)
 
     parser.print_help()
     return 0

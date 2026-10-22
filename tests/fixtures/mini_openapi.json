@@ -1,0 +1,154 @@
+{
+  "openapi": "3.0.1",
+  "info": {
+    "title": "Mini Atlas API",
+    "version": "2.0"
+  },
+  "tags": [
+    {
+      "name": "Clusters",
+      "description": "Manage clusters."
+    },
+    {
+      "name": "Alerts",
+      "description": "Manage alerts."
+    }
+  ],
+  "paths": {
+    "/api/atlas/v2/groups/{groupId}/clusters": {
+      "parameters": [
+        {
+          "name": "groupId",
+          "in": "path",
+          "required": true,
+          "description": "Project ID (path level).",
+          "schema": {
+            "type": "string"
+          }
+        }
+      ],
+      "get": {
+        "operationId": "listGroupClusters",
+        "summary": "Return All Clusters",
+        "description": "Return all clusters in one project.",
+        "tags": ["Clusters"],
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/envelope"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      },
+      "post": {
+        "operationId": "createGroupCluster",
+        "summary": "Create One Cluster",
+        "tags": ["Clusters"],
+        "parameters": [
+          {
+            "name": "groupId",
+            "in": "path",
+            "required": true,
+            "description": "Project ID (operation override).",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "description": "Cluster to create.",
+          "required": true,
+          "content": {
+            "application/vnd.atlas.2024-10-23+json": {
+              "schema": {
+                "$ref": "#/components/schemas/Cluster"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Created"
+          }
+        }
+      }
+    },
+    "/api/atlas/v2/alerts": {
+      "get": {
+        "operationId": "listAlerts",
+        "summary": "Return All Alerts",
+        "tags": ["Alerts"],
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      }
+    },
+    "/api/atlas/v2/status": {
+      "get": {
+        "operationId": "getSystemStatus",
+        "summary": "Return the Status",
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "parameters": {
+      "envelope": {
+        "name": "envelope",
+        "in": "query",
+        "required": false,
+        "description": "Wrap the response in an envelope.",
+        "schema": {
+          "type": "boolean",
+          "default": false
+        }
+      }
+    },
+    "schemas": {
+      "Cluster": {
+        "type": "object",
+        "required": ["name", "clusterType"],
+        "properties": {
+          "name": {
+            "type": "string",
+            "description": "Human-readable label for the cluster."
+          },
+          "clusterType": {
+            "type": "string",
+            "description": "Type of cluster."
+          },
+          "diskSizeGB": {
+            "type": "number",
+            "description": "Storage capacity."
+          },
+          "providerSettings": {
+            "$ref": "#/components/schemas/ProviderSettings"
+          },
+          "tags": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        }
+      },
+      "ProviderSettings": {
+        "type": "object",
+        "properties": {
+          "providerName": {
+            "type": "string"
+          }
+        }
+      }
+    }
+  }
+}

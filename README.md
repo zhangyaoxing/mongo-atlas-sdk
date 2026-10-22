@@ -15,6 +15,7 @@ MongoDB Atlas SDK 与命令行工具（Python ≥ 3.10）。
 uv sync                              # 创建 .venv 并安装依赖
 uv run mongo-atlas --version         # 查看版本
 uv run mongo-atlas config            # 查看当前生效配置（密钥自动打码）
+uv run mongo-atlas crawl             # 抓取 API 文档到 .data/api_docs.json
 uv run python -m mongo_atlas_sdk     # 等价的模块入口
 ```
 
@@ -32,6 +33,72 @@ uv run python -m mongo_atlas_sdk     # 等价的模块入口
 | `make build` | 构建 sdist / wheel 到 `dist/` |
 | `make lock` | 更新 `uv.lock` |
 
+## 抓取 API 文档
+
+Atlas 文档站（`/docs/api/doc/atlas-admin-api-v2`）的正文本身由官方 OpenAPI 文档渲染而来，页面提供了同源下载：
+
+- `https://www.mongodb.com/docs/api/doc/atlas-admin-api-v2.json`（OpenAPI 3.0.1，约 4.7 MB）
+
+因此抓取直接解析这份 JSON，而不是用 Playwright 解析渲染后的 DOM：字段（`type` / `required` / `description`）完全一致，但只需一次请求、结构稳定。实测单次抓取约 2 秒。
+
+```bash
+uv run mongo-atlas crawl                       # 下载并写入 .data/api_docs.json
+uv run mongo-atlas crawl --spec local.json     # 使用本地 OpenAPI 文件（离线/测试）
+uv run mongo-atlas crawl -o /tmp/docs.json     # 自定义输出路径
+```
+
+产物 `.data/api_docs.json`（`.data/` 已被 `.gitignore` 忽略）：
+
+```json
+{
+  "meta": {
+    "source": "https://www.mongodb.com/docs/api/doc/atlas-admin-api-v2.json",
+    "fetched_at": "2026-10-22T12:22:00+00:00",
+    "title": "MongoDB Atlas Administration API",
+    "api_version": "2.0",
+    "openapi": "3.0.1",
+    "spec_sha256": "..."
+  },
+  "categories": [
+    {
+      "name": "Clusters",
+      "description": "...",
+      "endpoints": [
+        {
+          "operation_id": "createGroupCluster",
+          "summary": "Create One Cluster in One Project",
+          "description": "...",
+          "method": "POST",
+          "path": "/api/atlas/v2/groups/{groupId}/clusters",
+          "tags": ["Clusters"],
+          "parameters": {
+            "path": [{"name": "groupId", "type": "string", "required": true, "description": "...", "schema": {}}],
+            "query": [],
+            "body": [{"name": "name", "type": "string", "required": false, "description": "...", "schema": {}}]
+          },
+          "request_body": {
+            "content_type": "application/vnd.atlas.2024-10-23+json",
+            "type": "object",
+            "required": true,
+            "description": "...",
+            "schema_ref": "ClusterDescription20240805",
+            "schema": {"$ref": "#/components/schemas/ClusterDescription20240805"}
+          }
+        }
+      ]
+    }
+  ]
+}
+```
+
+约定：
+
+- 一级分类对应 spec 的 `tags`，即文档页面的分类标题（未来类名）；`operation_id` 是稳定的方法名来源，`summary` 对应端点页标题。
+- Path / Query 参数直接来自 spec；参数级 `$ref` 会解析，同名参数以 operation 级覆盖 path 级。
+- Body 参数取 schema 顶层字段；数组 Body 取 `items` 的字段。`schema` 保留原始 `$ref`，供后续归一化阶段展开 `allOf` / `oneOf` 和嵌套对象。
+- 少数 `oneOf` 组合的 Body（如 `GroupAlertsConfig`）没有单一字段列表，只保留原始 schema。
+- `meta.spec_sha256` 用于确认归一化结果对应哪个版本的文档。
+
 ## 目录结构
 
 ```
@@ -41,8 +108,12 @@ uv run python -m mongo_atlas_sdk     # 等价的模块入口
 │   ├── __main__.py           # python -m mongo_atlas_sdk
 │   ├── cli.py                # console script: mongo-atlas
 │   ├── config.py             # 环境变量配置
+│   ├── crawler/              # OpenAPI → api_docs.json
+│   │   ├── loader.py         # 下载 / 读取 / 写出
+│   │   └── extract.py        # 抽取分类、端点、参数
 │   └── py.typed              # 自带类型信息（PEP 561）
-├── tests/                    # pytest 测试
+├── tests/                    # pytest 测试（fixtures/mini_openapi.json）
+├── .data/                    # 抓取产物（git-ignored）
 ├── pyproject.toml            # 元数据 + ruff/mypy/pytest/coverage 配置
 ├── uv.lock                   # 锁定的依赖版本（需提交）
 ├── Makefile
