@@ -7,6 +7,7 @@ import json
 import sys
 from collections.abc import Sequence
 from pathlib import Path
+from typing import Any
 
 from mongo_atlas_sdk import __version__
 from mongo_atlas_sdk.config import Settings
@@ -18,10 +19,12 @@ from mongo_atlas_sdk.crawler import (
     load_spec,
     write_json_document,
 )
+from mongo_atlas_sdk.generator import GeneratorError, generate_python
 from mongo_atlas_sdk.normalizer import normalize_api_docs
 
 DEFAULT_OUTPUT = Path(".data/api_docs.json")
 DEFAULT_NORMALIZED_OUTPUT = Path(".data/normalized_api_docs.json")
+DEFAULT_GENERATED_OUTPUT = Path("src/mongo_atlas_sdk")
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -95,6 +98,33 @@ def build_parser() -> argparse.ArgumentParser:
         default=DEFAULT_NORMALIZED_OUTPUT,
         help="Output path (default: %(default)s).",
     )
+
+    generate_parser = subparsers.add_parser(
+        "generate",
+        help="Generate the Python SDK from .data/normalized_api_docs.json.",
+        description=(
+            "Render pydantic models, resource classes, and the Atlas client into the output package."
+        ),
+    )
+    generate_parser.add_argument(
+        "-i",
+        "--input",
+        type=Path,
+        default=DEFAULT_NORMALIZED_OUTPUT,
+        help="Normalized document to read (default: %(default)s).",
+    )
+    generate_parser.add_argument(
+        "-o",
+        "--output",
+        type=Path,
+        default=DEFAULT_GENERATED_OUTPUT,
+        help="Package directory to generate into (default: %(default)s).",
+    )
+    generate_parser.add_argument(
+        "--package",
+        default="mongo_atlas_sdk",
+        help="Import name of the generated package (default: %(default)s).",
+    )
     return parser
 
 
@@ -117,17 +147,24 @@ def _crawl(args: argparse.Namespace) -> int:
     return 0
 
 
-def _normalize(args: argparse.Namespace) -> int:
+def _load_json_object(path: Path) -> dict[str, Any] | None:
     try:
-        docs = json.loads(args.input.read_text(encoding="utf-8"))
+        document = json.loads(path.read_text(encoding="utf-8"))
     except OSError as exc:
-        print(f"error: cannot read {args.input}: {exc}", file=sys.stderr)
-        return 1
+        print(f"error: cannot read {path}: {exc}", file=sys.stderr)
+        return None
     except json.JSONDecodeError as exc:
-        print(f"error: invalid JSON in {args.input}: {exc}", file=sys.stderr)
-        return 1
-    if not isinstance(docs, dict):
-        print(f"error: {args.input} must contain a JSON object", file=sys.stderr)
+        print(f"error: invalid JSON in {path}: {exc}", file=sys.stderr)
+        return None
+    if not isinstance(document, dict):
+        print(f"error: {path} must contain a JSON object", file=sys.stderr)
+        return None
+    return document
+
+
+def _normalize(args: argparse.Namespace) -> int:
+    docs = _load_json_object(args.input)
+    if docs is None:
         return 1
     if "schemas" not in docs:
         print(
@@ -149,6 +186,29 @@ def _normalize(args: argparse.Namespace) -> int:
     return 0
 
 
+def _generate(args: argparse.Namespace) -> int:
+    docs = _load_json_object(args.input)
+    if docs is None:
+        return 1
+    if "types" not in docs or "categories" not in docs:
+        print(
+            f"error: {args.input} is not a normalized document; re-run `mongo-atlas normalize`",
+            file=sys.stderr,
+        )
+        return 1
+
+    try:
+        stats = generate_python(docs, args.output, package=str(args.package))
+    except GeneratorError as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 1
+    print(
+        f"wrote {args.output} ({stats['models']} models, "
+        f"{stats['resources']} resources, {stats['methods']} methods)"
+    )
+    return 0
+
+
 def main(argv: Sequence[str] | None = None) -> int:
     """Run the CLI and return a process exit code."""
     parser = build_parser()
@@ -164,6 +224,9 @@ def main(argv: Sequence[str] | None = None) -> int:
 
     if args.command == "normalize":
         return _normalize(args)
+
+    if args.command == "generate":
+        return _generate(args)
 
     parser.print_help()
     return 0

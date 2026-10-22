@@ -2,7 +2,7 @@
 .DEFAULT_GOAL := help
 UV ?= uv
 
-.PHONY: help install lock lint format format-check typecheck test coverage check build clean
+.PHONY: help install lock lint format format-check typecheck test coverage generate check build clean
 
 help: ## Show available targets
 	@grep -E '^[a-zA-Z_-]+:.*?## ' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "  \033[36m%-14s\033[0m %s\n", $$1, $$2}'
@@ -31,6 +31,9 @@ test: ## Run the test suite
 
 coverage: ## Run tests with a coverage report
 	$(UV) run pytest --cov --cov-report=term-missing
+
+generate: ## Regenerate the Python SDK from normalized docs
+	$(UV) run mongo-atlas generate
 
 check: lint format-check typecheck test ## Run every check used by CI
 
