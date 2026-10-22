@@ -6,9 +6,11 @@ import json
 from collections.abc import Mapping
 from typing import Any
 
-from mongo_atlas_sdk.generator.naming import enum_member, field_name, snake_case
-from mongo_atlas_sdk.generator.schema import annotation, references
-from mongo_atlas_sdk.generator.templating import docstring_text, render
+from mongo_atlas_sdk.generator.ir import references
+from mongo_atlas_sdk.generator.python.naming import enum_member, field_name, snake_case
+from mongo_atlas_sdk.generator.python.schema import annotation
+from mongo_atlas_sdk.generator.python.templating import docstring_text
+from mongo_atlas_sdk.generator.templating import render
 
 _TYPING = frozenset({"Any", "Literal", "TypeAlias"})
 _DATETIME = frozenset({"datetime", "date"})
@@ -99,6 +101,7 @@ def render_model(definition: Mapping[str, Any], *, package: str) -> str:
     if kind == "object":
         fields, rebuild = _object_fields(definition, name=name, imports=imports)
         return render(
+            "python",
             "model_object.py.j2",
             name=name,
             imports=_import_block(imports, package),
@@ -112,6 +115,7 @@ def render_model(definition: Mapping[str, Any], *, package: str) -> str:
     if kind == "enum":
         base = "int" if definition.get("type") == "integer" else "str"
         return render(
+            "python",
             "model_enum.py.j2",
             name=name,
             base=base,
@@ -131,6 +135,7 @@ def render_model(definition: Mapping[str, Any], *, package: str) -> str:
     imports.add("TypeAlias")
     rendered_target = annotation(target, current=name, imports=imports)
     return render(
+        "python",
         "model_alias.py.j2",
         name=name,
         imports=_import_block(imports, package),

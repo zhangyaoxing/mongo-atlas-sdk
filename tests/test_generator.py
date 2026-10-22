@@ -11,7 +11,7 @@ import httpx
 import pytest
 
 from mongo_atlas_sdk.cli import main
-from mongo_atlas_sdk.generator import generate_python
+from mongo_atlas_sdk.generator import LANGUAGES, GeneratorError, generate, generate_python
 
 
 def _docs() -> dict[str, Any]:
@@ -407,3 +407,51 @@ def test_generated_client_validates_auth_arguments(tmp_path: Path) -> None:
             client_module.AtlasClient(public_key="public")
     finally:
         _forget_package(package, tmp_path)
+
+
+def test_registry_exposes_python_target() -> None:
+    target = LANGUAGES["python"]
+
+    assert target.default_package == "pyatlassdk"
+    assert str(target.default_output).endswith("pyatlassdk/src/pyatlassdk")
+
+
+def test_generate_dispatches_by_language(tmp_path: Path) -> None:
+    stats = generate("python", _docs(), output_root=tmp_path / "pkg", package="pkg")
+
+    assert stats == {"models": 6, "resources": 1, "methods": 2}
+    assert (tmp_path / "pkg" / "client.py").exists()
+
+
+def test_generate_rejects_unknown_language(tmp_path: Path) -> None:
+    with pytest.raises(GeneratorError, match="Unsupported language"):
+        generate("ruby", _docs(), output_root=tmp_path / "pkg", package="pkg")
+
+
+def test_cli_generate_accepts_language(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    source = tmp_path / "normalized.json"
+    source.write_text(json.dumps(_docs()), encoding="utf-8")
+    output = tmp_path / "pkg"
+
+    assert (
+        main(
+            [
+                "generate",
+                "--language",
+                "python",
+                "-i",
+                str(source),
+                "-o",
+                str(output),
+                "--package",
+                "demo",
+            ]
+        )
+        == 0
+    )
+
+    assert (output / "client.py").exists()
+    assert "6 models, 1 resources, 2 methods" in capsys.readouterr().out

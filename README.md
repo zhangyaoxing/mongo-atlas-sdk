@@ -17,7 +17,8 @@ make pipeline          # crawl -> normalize -> generate, in one command
 # or run each step separately:
 make crawl             # .data/api_docs.json
 make normalize         # .data/normalized_api_docs.json
-make pygen             # pyatlassdk/src/pyatlassdk
+make generate          # SDK for SDK_LANG=python (the default)
+make pygen             # alias for `generate --language python`
 ```
 
 ## Common commands
@@ -35,11 +36,13 @@ make pygen             # pyatlassdk/src/pyatlassdk
 | `make lock` | Refresh `uv.lock` |
 | `make crawl` | Fetch the latest OpenAPI document into `.data/api_docs.json` |
 | `make normalize` | Clean it into `.data/normalized_api_docs.json` |
-| `make pygen` | Render the SDK from templates into `pyatlassdk/` |
-| `make pipeline` | Run crawl → normalize → pygen |
+| `make generate` | Generate an SDK (`SDK_LANG=python` by default) |
+| `make pygen` | Alias for `generate --language python` |
+| `make pipeline` | Run crawl → normalize → generate |
 | `uv run mongo-atlas crawl` | CLI: crawl |
 | `uv run mongo-atlas normalize` | CLI: normalize |
-| `uv run mongo-atlas pygen` | CLI: generate |
+| `uv run mongo-atlas generate --language python` | CLI: generate |
+| `uv run mongo-atlas pygen` | CLI: alias for the Python target |
 
 ## Crawling the API docs
 
@@ -216,17 +219,27 @@ The `kind` of a type expression is one of `primitive`, `enum`, `array`, `object`
 
 > Note: `required` follows the spec exactly. A few body schemas (such as `ClusterDescription20240805`) do not declare a `required` array in the official spec, so their normalized fields are `false`. The normalizer does not infer them.
 
-## Generating the Python SDK
+## Supported languages
 
-The SDK is generated into the separate [pyatlassdk](https://github.com/zhangyaoxing/pyatlassdk) repository, which is attached to this repository as a submodule:
+| Language | Status | Default output | Generator |
+| --- | --- | --- | --- |
+| Python | supported | `pyatlassdk/src/pyatlassdk` | `generator/python/` |
+| JavaScript | planned | – | – |
+| Rust | planned | – | – |
+
+## Generating an SDK
+
+The Python target writes into the separate [pyatlassdk](https://github.com/zhangyaoxing/pyatlassdk) repository, which is attached to this repository as a submodule:
 
 ```bash
 git clone --recurse-submodules git@github.com:zhangyaoxing/mongo-atlas-sdk.git
-make pygen                                               # writes pyatlassdk/src/pyatlassdk
-uv run mongo-atlas pygen -o /tmp/sdk --package sdk       # generate into any directory
+make generate                                            # SDK_LANG=python by default
+make generate SDK_LANG=python                            # explicit language
+make pygen                                               # alias for the Python target
+uv run mongo-atlas generate --language python -o /tmp/sdk --package sdk
 ```
 
-Generation is fully driven by Jinja2 templates in `src/mongo_atlas_sdk/generator/templates/`, with `normalized_api_docs.json` as the only input. The same input produces byte-identical output; there is no model inference or manual editing involved.
+Generation is fully driven by Jinja2 templates in `src/mongo_atlas_sdk/generator/python/templates/`, with `normalized_api_docs.json` as the only input. The same input produces byte-identical output; there is no model inference or manual editing involved.
 
 Output (`pyatlassdk/src/pyatlassdk/`):
 
@@ -274,6 +287,37 @@ Notes:
 - Commit order: commit and push in `pyatlassdk/` first, then commit the new submodule pointer here.
 - Fields without `required` in `normalized_api_docs.json` become optional parameters. That reflects the spec, not a generator assumption.
 
+### Adding a language
+
+Crawling and normalization are language-agnostic; only the rendering stage changes. The generator is laid out so a new target is a self-contained subpackage:
+
+```
+src/mongo_atlas_sdk/generator/
+├── ir.py             # shared type-graph transforms (inline hoisting, references)
+├── naming.py         # shared PascalCase normalization
+├── templating.py     # Jinja2 environment factory (one per language package)
+├── registry.py       # language -> default output/package + orchestrator
+└── python/           # the Python target
+    ├── orchestrator.py
+    ├── models.py / resources.py / client.py
+    ├── naming.py / schema.py / templating.py
+    └── templates/    # .py.j2 templates
+```
+
+To add JavaScript, Rust, or another language:
+
+1. Create `generator/<language>/` with an `orchestrator.py` that exposes
+   `generate_<language>(docs, output_root, *, package)` and returns the same
+   stats dict as the Python backend.
+2. Add the language's templates under `generator/<language>/templates/`;
+   `generator.templating.render(language, template, **context)` loads them.
+3. Register a `LanguageTarget` in `registry.py` with the default output path,
+   package name, and orchestrator.
+4. `make generate SDK_LANG=<language>` and the CLI `--language` flag work
+   immediately. Add generator tests for the new backend.
+
+The crawler, normalizer, CLI plumbing, and `make pipeline` stay unchanged.
+
 ## Project layout
 
 ```
@@ -290,14 +334,20 @@ Notes:
 │   ├── normalizer/           # api_docs.json -> normalized_api_docs.json
 │   │   ├── schema.py
 │   │   └── api.py
-│   ├── generator/            # normalized_api_docs.json -> pyatlassdk
-│   │   ├── naming.py         # naming and identifier sanitizing
-│   │   ├── schema.py         # inline type hoisting and annotations
-│   │   ├── models.py         # model rendering context
-│   │   ├── resources.py      # resource rendering context
-│   │   ├── client.py         # client rendering context
-│   │   ├── templating.py     # Jinja2 environment
-│   │   └── templates/        # .py.j2 templates
+│   ├── generator/            # normalized_api_docs.json -> SDK code
+│   │   ├── ir.py             # shared type-graph transforms
+│   │   ├── naming.py         # shared PascalCase normalization
+│   │   ├── templating.py     # Jinja2 environment factory
+│   │   ├── registry.py       # language -> target defaults
+│   │   └── python/           # Python backend
+│   │       ├── orchestrator.py
+│   │       ├── models.py
+│   │       ├── resources.py
+│   │       ├── client.py
+│   │       ├── naming.py
+│   │       ├── schema.py
+│   │       ├── templating.py
+│   │       └── templates/    # .py.j2 templates
 │   └── py.typed              # PEP 561 typing marker
 ├── tests/                    # pytest tests (fixtures/mini_openapi.json)
 ├── .data/                    # crawl artifacts (git-ignored)

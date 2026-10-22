@@ -1,8 +1,9 @@
 # mongo-atlas-sdk developer tasks. Requires uv: https://docs.astral.sh/uv/
 .DEFAULT_GOAL := help
 UV ?= uv
+SDK_LANG ?= python
 
-.PHONY: help install lock lint format format-check typecheck test crawl normalize pygen pipeline coverage check build clean
+.PHONY: help install lock lint format format-check typecheck test crawl normalize generate pygen pipeline coverage check build clean
 
 help: ## Show available targets
 	@grep -E '^[a-zA-Z_-]+:.*?## ' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "  \033[36m%-14s\033[0m %s\n", $$1, $$2}'
@@ -38,10 +39,13 @@ crawl: ## Fetch the latest Atlas docs into .data/api_docs.json
 normalize: ## Clean api_docs.json into normalized_api_docs.json
 	$(UV) run mongo-atlas normalize
 
-pygen: ## Generate the Python SDK from normalized docs
+generate: ## Generate an SDK for a target language (LANG=python by default)
+	$(UV) run mongo-atlas generate --language $(SDK_LANG)
+
+pygen: ## Alias for `generate --language python`
 	$(UV) run mongo-atlas pygen
 
-pipeline: crawl normalize pygen ## Run the full crawl -> normalize -> generate pipeline
+pipeline: crawl normalize generate ## Run the full crawl -> normalize -> generate pipeline
 
 check: lint format-check typecheck test ## Run every check used by CI
 

@@ -7,18 +7,16 @@ from collections.abc import Mapping
 from pathlib import Path
 from typing import Any
 
-from mongo_atlas_sdk.generator.client import render_client
-from mongo_atlas_sdk.generator.models import render_model
-from mongo_atlas_sdk.generator.naming import pascal_case, snake_case
-from mongo_atlas_sdk.generator.resources import render_resource
-from mongo_atlas_sdk.generator.schema import hoist_inline_objects
+from mongo_atlas_sdk.generator.errors import GeneratorError
+from mongo_atlas_sdk.generator.ir import hoist_inline_objects
+from mongo_atlas_sdk.generator.naming import pascal_case
+from mongo_atlas_sdk.generator.python.client import render_client
+from mongo_atlas_sdk.generator.python.models import render_model
+from mongo_atlas_sdk.generator.python.naming import snake_case
+from mongo_atlas_sdk.generator.python.resources import render_resource
 from mongo_atlas_sdk.generator.templating import render
 
 DEFAULT_PACKAGE = "pyatlassdk"
-
-
-class GeneratorError(RuntimeError):
-    """Raised when the normalized document cannot be rendered safely."""
 
 
 def _reset_directory(path: Path) -> None:
@@ -29,16 +27,16 @@ def _reset_directory(path: Path) -> None:
 
 def _models_init(modules: Mapping[str, str]) -> str:
     entries = [{"name": name, "module": modules[name]} for name in sorted(modules)]
-    return render("models_init.py.j2", modules=entries)
+    return render("python", "models_init.py.j2", modules=entries)
 
 
 def _resources_init(modules: Mapping[str, str], package: str) -> str:
     entries = [{"name": name, "module": modules[name]} for name in sorted(modules)]
-    return render("resources_init.py.j2", package=package, resources=entries)
+    return render("python", "resources_init.py.j2", package=package, resources=entries)
 
 
 def _package_init(package: str) -> str:
-    return render("package_init.py.j2", package=package)
+    return render("python", "package_init.py.j2", package=package)
 
 
 def generate_python(

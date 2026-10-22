@@ -19,12 +19,35 @@ from mongo_atlas_sdk.crawler import (
     load_spec,
     write_json_document,
 )
-from mongo_atlas_sdk.generator import GeneratorError, generate_python
+from mongo_atlas_sdk.generator import LANGUAGES, GeneratorError, generate, get_target
 from mongo_atlas_sdk.normalizer import normalize_api_docs
 
 DEFAULT_OUTPUT = Path(".data/api_docs.json")
 DEFAULT_NORMALIZED_OUTPUT = Path(".data/normalized_api_docs.json")
-DEFAULT_GENERATED_OUTPUT = Path("pyatlassdk/src/pyatlassdk")
+
+
+def _add_generation_arguments(
+    parser: argparse.ArgumentParser,
+) -> None:
+    parser.add_argument(
+        "-i",
+        "--input",
+        type=Path,
+        default=DEFAULT_NORMALIZED_OUTPUT,
+        help="Normalized document to read (default: %(default)s).",
+    )
+    parser.add_argument(
+        "-o",
+        "--output",
+        type=Path,
+        default=None,
+        help="Package directory to generate into (default: the language target).",
+    )
+    parser.add_argument(
+        "--package",
+        default=None,
+        help="Import name of the generated package (default: the language target).",
+    )
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -99,32 +122,25 @@ def build_parser() -> argparse.ArgumentParser:
         help="Output path (default: %(default)s).",
     )
 
+    generate_parser = subparsers.add_parser(
+        "generate",
+        help="Generate an SDK for a supported target language.",
+        description="Render an SDK from .data/normalized_api_docs.json.",
+    )
+    generate_parser.add_argument(
+        "--language",
+        choices=sorted(LANGUAGES),
+        default="python",
+        help="Target language (default: %(default)s).",
+    )
+    _add_generation_arguments(generate_parser)
+
     pygen_parser = subparsers.add_parser(
         "pygen",
-        help="Generate the Python SDK from .data/normalized_api_docs.json.",
-        description=(
-            "Render pydantic models, resource classes, and the Atlas client into the output package."
-        ),
+        help="Alias for `generate --language python`.",
+        description="Render the Python SDK from .data/normalized_api_docs.json.",
     )
-    pygen_parser.add_argument(
-        "-i",
-        "--input",
-        type=Path,
-        default=DEFAULT_NORMALIZED_OUTPUT,
-        help="Normalized document to read (default: %(default)s).",
-    )
-    pygen_parser.add_argument(
-        "-o",
-        "--output",
-        type=Path,
-        default=DEFAULT_GENERATED_OUTPUT,
-        help="Package directory to generate into (default: %(default)s).",
-    )
-    pygen_parser.add_argument(
-        "--package",
-        default="pyatlassdk",
-        help="Import name of the generated package (default: %(default)s).",
-    )
+    _add_generation_arguments(pygen_parser)
     return parser
 
 
@@ -186,7 +202,7 @@ def _normalize(args: argparse.Namespace) -> int:
     return 0
 
 
-def _pygen(args: argparse.Namespace) -> int:
+def _generate(args: argparse.Namespace, language: str) -> int:
     docs = _load_json_object(args.input)
     if docs is None:
         return 1
@@ -198,12 +214,14 @@ def _pygen(args: argparse.Namespace) -> int:
         return 1
 
     try:
-        stats = generate_python(docs, args.output, package=str(args.package))
+        target = get_target(language)
+        output = args.output if args.output is not None else target.default_output
+        stats = generate(language, docs, output_root=output, package=args.package)
     except GeneratorError as exc:
         print(f"error: {exc}", file=sys.stderr)
         return 1
     print(
-        f"wrote {args.output} ({stats['models']} models, "
+        f"wrote {output} ({stats['models']} models, "
         f"{stats['resources']} resources, {stats['methods']} methods)"
     )
     return 0
@@ -225,8 +243,11 @@ def main(argv: Sequence[str] | None = None) -> int:
     if args.command == "normalize":
         return _normalize(args)
 
+    if args.command == "generate":
+        return _generate(args, str(args.language))
+
     if args.command == "pygen":
-        return _pygen(args)
+        return _generate(args, "python")
 
     parser.print_help()
     return 0

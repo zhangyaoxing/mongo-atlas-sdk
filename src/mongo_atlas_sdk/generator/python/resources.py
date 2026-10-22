@@ -6,9 +6,11 @@ import json
 from collections.abc import Mapping
 from typing import Any
 
-from mongo_atlas_sdk.generator.naming import pascal_case, snake_case
-from mongo_atlas_sdk.generator.schema import annotation
-from mongo_atlas_sdk.generator.templating import docstring_text, render
+from mongo_atlas_sdk.generator.naming import pascal_case
+from mongo_atlas_sdk.generator.python.naming import snake_case
+from mongo_atlas_sdk.generator.python.schema import annotation
+from mongo_atlas_sdk.generator.python.templating import docstring_text
+from mongo_atlas_sdk.generator.templating import render
 
 _TYPING = frozenset({"Any", "Literal"})
 _SUCCESS_PREFIX = "2"
@@ -179,6 +181,7 @@ def render_resource(category: Mapping[str, Any], *, package: str) -> str:
             methods.append(_render_method(endpoint, imports))
 
     return render(
+        "python",
         "resource.py.j2",
         class_name=class_name,
         package=package,
