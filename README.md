@@ -249,12 +249,22 @@ Usage:
 from pyatlassdk import AtlasClient
 from pyatlassdk.models.cluster_description20240805 import ClusterDescription20240805
 
+# Digest authentication with Atlas API keys
 with AtlasClient(public_key="...", private_key="...") as client:
     cluster = client.clusters.create_group_cluster(
         group_id="...",
         body=ClusterDescription20240805(name="demo", cluster_type="REPLICASET"),
     )
+
+# OAuth 2.0 client credentials with Atlas service account credentials
+with AtlasClient(client_id="...", client_secret="...") as client:
+    cluster = client.clusters.create_group_cluster(
+        group_id="...",
+        body=ClusterDescription20240805(name="demo", cluster_type="REPLICASET"),
+    )
 ```
+
+`AtlasClient` supports both authentication modes and rejects mixed or incomplete credentials. OAuth 2.0 tokens are fetched from `https://cloud.mongodb.com/api/oauth/token` with the `client_credentials` grant, cached until shortly before `expires_in`, and refreshed once when the API returns `401`. Override the endpoint with `oauth_token_url=...` if needed.
 
 Notes:
 

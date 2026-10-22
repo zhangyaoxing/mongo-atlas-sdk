@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import threading
+import time
 from typing import Any, Mapping
 
 import httpx
@@ -14,6 +16,7 @@ from pydantic import BaseModel, TypeAdapter
 {% endif %}
 
 DEFAULT_BASE_URL = "https://cloud.mongodb.com/api/atlas/v2"
+DEFAULT_OAUTH_TOKEN_URL = "https://cloud.mongodb.com/api/oauth/token"
 
 
 class AtlasApiError(Exception):
@@ -43,15 +46,51 @@ def _payload(response: httpx.Response) -> Any:
 
 
 class AtlasClient:
-    """Synchronous client for the MongoDB Atlas Administration API."""
+    """Synchronous client for the MongoDB Atlas Administration API.
+
+    Supports HTTP Digest authentication with Atlas API keys and OAuth 2.0
+    client-credentials authentication with Atlas service account credentials.
+    """
 
     def __init__(
         self,
         public_key: str | None = None,
         private_key: str | None = None,
+        client_id: str | None = None,
+        client_secret: str | None = None,
         base_url: str = DEFAULT_BASE_URL,
+        oauth_token_url: str = DEFAULT_OAUTH_TOKEN_URL,
         timeout: float = 30.0,
     ) -> None:
+        has_api_key = public_key is not None or private_key is not None
+        has_service_account = client_id is not None or client_secret is not None
+        if has_api_key and has_service_account:
+            raise ValueError(
+                "Pass either Atlas API keys or service account credentials, not both"
+            )
+        if has_api_key and not (public_key and private_key):
+            raise ValueError(
+                "Both public_key and private_key are required for Digest authentication"
+            )
+        if has_service_account and not (client_id and client_secret):
+            raise ValueError(
+                "Both client_id and client_secret are required for OAuth 2.0 authentication"
+            )
+
+        if public_key and private_key:
+            self.auth_mode = "digest"
+        elif client_id and client_secret:
+            self.auth_mode = "oauth2"
+        else:
+            self.auth_mode = "anonymous"
+
+        self._oauth_client_id = client_id
+        self._oauth_client_secret = client_secret
+        self._oauth_token_url = oauth_token_url
+        self._oauth_token: str | None = None
+        self._oauth_expires_at = 0.0
+        self._oauth_lock = threading.Lock()
+
         auth = (
             httpx.DigestAuth(public_key, private_key)
             if public_key and private_key
@@ -72,6 +111,44 @@ class AtlasClient:
     def __exit__(self, *args: object) -> None:
         self.close()
 
+    def _access_token(self, *, refresh: bool = False) -> str:
+        """Return a cached OAuth 2.0 token, fetching a new one when needed."""
+        with self._oauth_lock:
+            now = time.monotonic()
+            if not refresh and self._oauth_token is not None and now < self._oauth_expires_at:
+                return self._oauth_token
+            if self._oauth_client_id is None or self._oauth_client_secret is None:
+                raise AtlasApiError(401, "OAuth 2.0 credentials are not configured")
+            response = self._http.post(
+                self._oauth_token_url,
+                data={
+                    "grant_type": "client_credentials",
+                    "client_id": self._oauth_client_id,
+                    "client_secret": self._oauth_client_secret,
+                },
+            )
+            if response.status_code >= 400:
+                raise AtlasApiError(
+                    response.status_code,
+                    "Failed to obtain an OAuth 2.0 access token",
+                    _payload(response),
+                )
+            payload = response.json()
+            token = payload.get("access_token")
+            if not isinstance(token, str) or not token:
+                raise AtlasApiError(
+                    500,
+                    "OAuth 2.0 response did not contain an access_token",
+                    payload,
+                )
+            try:
+                lifetime = float(payload.get("expires_in", 3600))
+            except (TypeError, ValueError):
+                lifetime = 3600.0
+            self._oauth_token = token
+            self._oauth_expires_at = now + max(lifetime - 60.0, 1.0)
+            return token
+
     def request(
         self,
         method: str,
@@ -82,14 +159,21 @@ class AtlasClient:
         response_model: Any = None,
     ) -> Any:
         """Send one request and validate the response into ``response_model``."""
-        response = self._http.request(
-            method,
-            path,
-            params={
+        headers: dict[str, str] = {}
+        if self.auth_mode == "oauth2":
+            headers["Authorization"] = f"Bearer {self._access_token()}"
+
+        request_kwargs: dict[str, Any] = {
+            "params": {
                 key: value for key, value in (params or {}).items() if value is not None
             },
-            json=_serialize(json),
-        )
+            "json": _serialize(json),
+            "headers": headers,
+        }
+        response = self._http.request(method, path, **request_kwargs)
+        if response.status_code == 401 and self.auth_mode == "oauth2":
+            headers["Authorization"] = f"Bearer {self._access_token(refresh=True)}"
+            response = self._http.request(method, path, **request_kwargs)
         if response.status_code >= 400:
             raise AtlasApiError(
                 response.status_code, response.text, _payload(response)

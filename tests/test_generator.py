@@ -304,3 +304,106 @@ def test_cli_pygen_writes_package(
 
     assert (output / "client.py").exists()
     assert "6 models, 1 resources, 2 methods" in capsys.readouterr().out
+
+
+def _load_generated_client(tmp_path: Path) -> tuple[str, Any]:
+    package = f"gen_sdk_{uuid.uuid4().hex[:8]}"
+    generate_python(_docs(), tmp_path / package, package=package)
+    sys.path.insert(0, str(tmp_path))
+    importlib.invalidate_caches()
+    return package, importlib.import_module(f"{package}.client")
+
+
+def _forget_package(package: str, tmp_path: Path) -> None:
+    sys.path.remove(str(tmp_path))
+    for name in list(sys.modules):
+        if name == package or name.startswith(f"{package}."):
+            del sys.modules[name]
+
+
+def test_generated_client_oauth2_token_flow(tmp_path: Path) -> None:
+    package, client_module = _load_generated_client(tmp_path)
+    try:
+        client = client_module.AtlasClient(client_id="cid", client_secret="secret")
+        assert client.auth_mode == "oauth2"
+        token_requests: list[httpx.Request] = []
+        api_requests: list[httpx.Request] = []
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            if request.url.path == "/api/oauth/token":
+                token_requests.append(request)
+                return httpx.Response(200, json={"access_token": "token-1", "expires_in": 3600})
+            api_requests.append(request)
+            return httpx.Response(200, json={"results": []})
+
+        client._http.close()
+        client._http = httpx.Client(
+            base_url="https://example.test",
+            transport=httpx.MockTransport(handler),
+        )
+        body = importlib.import_module(f"{package}.models.cluster").Cluster(name="example")
+        client.clusters.create_group_cluster(group_id="g1", body=body)
+        client.clusters.create_group_cluster(group_id="g1", body=body)
+
+        assert len(token_requests) == 1
+        assert len(api_requests) == 2
+        assert api_requests[0].headers["authorization"] == "Bearer token-1"
+        form = token_requests[0].content.decode()
+        assert "grant_type=client_credentials" in form
+        assert "client_id=cid" in form
+        assert "client_secret=secret" in form
+    finally:
+        _forget_package(package, tmp_path)
+
+
+def test_generated_client_refreshes_oauth_token_on_401(tmp_path: Path) -> None:
+    package, client_module = _load_generated_client(tmp_path)
+    try:
+        client = client_module.AtlasClient(client_id="cid", client_secret="secret")
+        tokens: list[httpx.Request] = []
+        api_requests: list[httpx.Request] = []
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            if request.url.path == "/api/oauth/token":
+                tokens.append(request)
+                return httpx.Response(
+                    200,
+                    json={"access_token": f"token-{len(tokens)}", "expires_in": 3600},
+                )
+            api_requests.append(request)
+            if len(api_requests) == 1:
+                return httpx.Response(401, json={"error": "expired"})
+            return httpx.Response(200, json={"results": []})
+
+        client._http.close()
+        client._http = httpx.Client(
+            base_url="https://example.test",
+            transport=httpx.MockTransport(handler),
+        )
+        body = importlib.import_module(f"{package}.models.cluster").Cluster(name="example")
+        client.clusters.create_group_cluster(group_id="g1", body=body)
+
+        assert len(tokens) == 2
+        assert len(api_requests) == 2
+        assert api_requests[0].headers["authorization"] == "Bearer token-1"
+        assert api_requests[1].headers["authorization"] == "Bearer token-2"
+    finally:
+        _forget_package(package, tmp_path)
+
+
+def test_generated_client_validates_auth_arguments(tmp_path: Path) -> None:
+    package, client_module = _load_generated_client(tmp_path)
+    try:
+        with pytest.raises(ValueError, match="not both"):
+            client_module.AtlasClient(
+                public_key="public",
+                private_key="private",
+                client_id="client",
+                client_secret="secret",
+            )
+        with pytest.raises(ValueError, match="client_id and client_secret"):
+            client_module.AtlasClient(client_id="client")
+        with pytest.raises(ValueError, match="public_key and private_key"):
+            client_module.AtlasClient(public_key="public")
+    finally:
+        _forget_package(package, tmp_path)
