@@ -7,6 +7,7 @@ from collections.abc import Mapping
 from typing import Any
 
 from mongo_atlas_sdk.generator.naming import pascal_case
+from mongo_atlas_sdk.generator.paths import api_path
 from mongo_atlas_sdk.generator.python.naming import snake_case
 from mongo_atlas_sdk.generator.python.schema import annotation
 from mongo_atlas_sdk.generator.python.templating import docstring_text
@@ -140,7 +141,9 @@ def _render_method(endpoint: Mapping[str, Any], imports: set[str]) -> dict[str, 
         "arguments": arguments,
         "return_annotation": return_annotation,
         "docstring": _method_docstring(endpoint, path_parameters, query_parameters, body),
-        "path": _path_expression(str(endpoint.get("path") or ""), path_parameters, imports),
+        "path": _path_expression(
+            api_path(str(endpoint.get("path") or "")), path_parameters, imports
+        ),
         "query_params": [
             {
                 "wire": str(parameter.get("name") or ""),

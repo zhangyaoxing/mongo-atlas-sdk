@@ -12,6 +12,7 @@ import pytest
 
 from mongo_atlas_sdk.cli import main
 from mongo_atlas_sdk.generator import LANGUAGES, GeneratorError, generate, generate_python
+from mongo_atlas_sdk.generator.paths import api_path
 
 
 def _docs() -> dict[str, Any]:
@@ -228,7 +229,7 @@ def test_generate_python_writes_models_resources_and_client(tmp_path: Path) -> N
     assert "group_id: str," in resource
     assert "body: Cluster," in resource
     assert "envelope: bool | None = None," in resource
-    assert "path = f\"/api/atlas/v2/groups/{quote(str(group_id), safe='')}/clusters\"" in resource
+    assert "path = f\"/groups/{quote(str(group_id), safe='')}/clusters\"" in resource
     assert "response_model=PaginatedClusters," in resource
     assert "def get_node(" in resource
 
@@ -271,7 +272,7 @@ def test_generated_package_imports_and_serializes(tmp_path: Path) -> None:
 
         client._http.close()
         client._http = httpx.Client(
-            base_url="https://example.test",
+            base_url="https://example.test/api/atlas/v2",
             transport=httpx.MockTransport(handler),
         )
         result = client.clusters.create_group_cluster(
@@ -338,7 +339,7 @@ def test_generated_client_oauth2_token_flow(tmp_path: Path) -> None:
 
         client._http.close()
         client._http = httpx.Client(
-            base_url="https://example.test",
+            base_url="https://example.test/api/atlas/v2",
             transport=httpx.MockTransport(handler),
         )
         body = importlib.import_module(f"{package}.models.cluster").Cluster(name="example")
@@ -377,7 +378,7 @@ def test_generated_client_refreshes_oauth_token_on_401(tmp_path: Path) -> None:
 
         client._http.close()
         client._http = httpx.Client(
-            base_url="https://example.test",
+            base_url="https://example.test/api/atlas/v2",
             transport=httpx.MockTransport(handler),
         )
         body = importlib.import_module(f"{package}.models.cluster").Cluster(name="example")
@@ -455,3 +456,9 @@ def test_cli_generate_accepts_language(
 
     assert (output / "client.py").exists()
     assert "6 models, 1 resources, 2 methods" in capsys.readouterr().out
+
+
+def test_api_path_is_relative_to_base_url() -> None:
+    assert api_path("/api/atlas/v2/groups/x/clusters") == "/groups/x/clusters"
+    assert api_path("/api/atlas/v2") == "/"
+    assert api_path("/health") == "/health"
