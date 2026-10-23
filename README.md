@@ -254,6 +254,7 @@ Generation rules:
 - inline enums → `Literal[...]`; inline anonymous objects get a synthesized class name based on the parent type and property path (for example `ApiErrorParametersItem`)
 - field names become snake_case and automatically get `Field(alias=...)` when they differ from the wire name; invalid identifiers such as `_id` and `2dsphereIndexVersion` are mapped correctly
 - endpoint paths are emitted relative to `base_url` (default `https://cloud.mongodb.com/api/atlas/v2`), so the `/api/atlas/v2` prefix is not duplicated
+- request bodies are serialized with pydantic's JSON mode, so `datetime` / `date` fields become ISO 8601 strings before httpx encodes them
 - every method sends the Atlas versioned `Accept` header (the newest version declared by that endpoint's successful responses) and, for requests with a body, a matching versioned `Content-Type`; `DEFAULT_ACCEPT` / `DEFAULT_CONTENT_TYPE` are fallbacks
 - self-referencing types call `model_rebuild()` at the end of the module
 - enum members are sanitized: `<` → `LT`, `>` → `GT`, and invalid or duplicate names get a suffix

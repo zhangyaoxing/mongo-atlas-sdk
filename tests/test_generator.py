@@ -4,6 +4,7 @@ import importlib
 import json
 import sys
 import uuid
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
@@ -50,6 +51,14 @@ def _docs() -> dict[str, Any]:
                         "type": {
                             "kind": "array",
                             "items": {"kind": "primitive", "type": "string"},
+                        },
+                    },
+                    "deleteAfterDate": {
+                        "required": False,
+                        "type": {
+                            "kind": "primitive",
+                            "type": "string",
+                            "format": "date-time",
                         },
                     },
                     "settings": {
@@ -263,6 +272,7 @@ def test_generated_package_imports_and_serializes(tmp_path: Path) -> None:
             id="abc",
             disk_size_gb=10.0,
             settings={"encrypted": True},
+            delete_after_date=datetime(2026, 1, 1, tzinfo=timezone.utc),
         )
         assert cluster.model_dump(by_alias=True, exclude_none=True) == {
             "name": "example",
@@ -270,6 +280,7 @@ def test_generated_package_imports_and_serializes(tmp_path: Path) -> None:
             "_id": "abc",
             "diskSizeGB": 10.0,
             "settings": {"encrypted": True},
+            "deleteAfterDate": datetime(2026, 1, 1, tzinfo=timezone.utc),
         }
 
         captured: list[httpx.Request] = []
@@ -285,13 +296,19 @@ def test_generated_package_imports_and_serializes(tmp_path: Path) -> None:
         )
         result = client.clusters.create_group_cluster(
             group_id="g 1",
-            body=models.Cluster(name="created"),
+            body=models.Cluster(
+                name="created",
+                delete_after_date=datetime(2026, 1, 1, tzinfo=timezone.utc),
+            ),
             envelope=True,
         )
         assert captured[0].method == "POST"
         assert "/api/atlas/v2/groups/g%201/clusters" in str(captured[0].url)
         assert captured[0].url.params["envelope"] == "true"
-        assert json.loads(captured[0].content) == {"name": "created"}
+        payload = json.loads(captured[0].content)
+        assert payload["name"] == "created"
+        assert isinstance(payload["deleteAfterDate"], str)
+        assert payload["deleteAfterDate"].startswith("2026-01-01T00:00:00")
         cluster_type = importlib.import_module(f"{package}.models.cluster_type")
         assert cluster_type.ClusterType("sharded") is cluster_type.ClusterType.SHARDED
         assert type(result).__name__ == "PaginatedClusters"
