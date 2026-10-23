@@ -148,6 +148,7 @@ def generate_python(
         ),
         encoding="utf-8",
     )
+    (output_root / "_enums.py").write_text(render("python", "enums.py.j2"), encoding="utf-8")
     (output_root / "__init__.py").write_text(_package_init(package), encoding="utf-8")
     (output_root / "py.typed").write_text("", encoding="utf-8")
 

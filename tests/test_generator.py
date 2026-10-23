@@ -204,7 +204,10 @@ def test_generate_python_writes_models_resources_and_client(tmp_path: Path) -> N
     model = (tmp_path / package / "models" / "cluster.py").read_text(encoding="utf-8")
     assert "class Cluster(BaseModel):" in model
     assert "name: str = Field(description=" in model
-    assert 'cluster_type: Literal["REPLICASET", "SHARDED"] | None = Field(' in model
+    assert (
+        'cluster_type: Annotated[Literal["REPLICASET", "SHARDED"], '
+        "BeforeValidator(upper_case)] | None = Field("
+    ) in model
     assert 'alias="clusterType"' in model
     assert 'id: str | None = Field(default=None, alias="_id")' in model
     assert 'disk_size_gb: float | None = Field(default=None, alias="diskSizeGB")' in model
@@ -219,6 +222,7 @@ def test_generate_python_writes_models_resources_and_client(tmp_path: Path) -> N
     assert "Node.model_rebuild()" in node
 
     operator = (tmp_path / package / "models" / "operator.py").read_text(encoding="utf-8")
+    assert "class Operator(CaseInsensitiveEnum):" in operator
     assert 'LT = "<"' in operator
     assert 'GT = ">"' in operator
     assert 'EQ = "=="' in operator
@@ -255,7 +259,7 @@ def test_generated_package_imports_and_serializes(tmp_path: Path) -> None:
         models = importlib.import_module(f"{package}.models.cluster")
         cluster = models.Cluster(
             name="example",
-            cluster_type="SHARDED",
+            cluster_type="sharded",
             id="abc",
             disk_size_gb=10.0,
             settings={"encrypted": True},
@@ -288,6 +292,8 @@ def test_generated_package_imports_and_serializes(tmp_path: Path) -> None:
         assert "/api/atlas/v2/groups/g%201/clusters" in str(captured[0].url)
         assert captured[0].url.params["envelope"] == "true"
         assert json.loads(captured[0].content) == {"name": "created"}
+        cluster_type = importlib.import_module(f"{package}.models.cluster_type")
+        assert cluster_type.ClusterType("sharded") is cluster_type.ClusterType.SHARDED
         assert type(result).__name__ == "PaginatedClusters"
         assert result.results[0].name == "created"
     finally:

@@ -8,7 +8,7 @@ from __future__ import annotations
 {% endfor %}
 {% endif %}
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, BeforeValidator, ConfigDict, Field
 
 class {{ name }}(BaseModel):
 {{ description|docblock(4) }}

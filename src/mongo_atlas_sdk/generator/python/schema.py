@@ -19,7 +19,13 @@ _STRING_FORMATS = {
 }
 
 
-def annotation(expr: Mapping[str, Any], *, current: str, imports: set[str]) -> str:
+def annotation(
+    expr: Mapping[str, Any],
+    *,
+    current: str,
+    imports: set[str],
+    case_insensitive: bool = True,
+) -> str:
     """Render a normalized type expression as a Python annotation."""
     kind = expr.get("kind")
     if kind == "primitive":
@@ -30,10 +36,23 @@ def annotation(expr: Mapping[str, Any], *, current: str, imports: set[str]) -> s
         return PRIMITIVE_TYPES.get(str(expr.get("type")), "Any")
     if kind == "enum":
         imports.add("Literal")
-        values = ", ".join(json.dumps(value) for value in expr.get("values") or [])
-        return f"Literal[{values}]"
+        raw_values = list(expr.get("values") or [])
+        values = ", ".join(json.dumps(value) for value in raw_values)
+        literal = f"Literal[{values}]"
+        uppercase_strings = bool(raw_values) and all(
+            isinstance(value, str) and value == value.upper() for value in raw_values
+        )
+        if case_insensitive and uppercase_strings:
+            imports.update({"Annotated", "BeforeValidator", "upper_case"})
+            return f"Annotated[{literal}, BeforeValidator(upper_case)]"
+        return literal
     if kind == "array":
-        items = annotation(expr.get("items") or {}, current=current, imports=imports)
+        items = annotation(
+            expr.get("items") or {},
+            current=current,
+            imports=imports,
+            case_insensitive=case_insensitive,
+        )
         return f"list[{items}]"
     if kind == "reference":
         name = str(expr.get("name") or "Any")
@@ -42,7 +61,12 @@ def annotation(expr: Mapping[str, Any], *, current: str, imports: set[str]) -> s
         return name
     if kind == "union":
         parts = [
-            annotation(variant, current=current, imports=imports)
+            annotation(
+                variant,
+                current=current,
+                imports=imports,
+                case_insensitive=case_insensitive,
+            )
             for variant in expr.get("variants") or []
         ]
         parts = list(dict.fromkeys(parts)) or ["Any"]

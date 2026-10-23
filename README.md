@@ -257,6 +257,7 @@ Generation rules:
 - every method sends the Atlas versioned `Accept` header (the newest version declared by that endpoint's successful responses) and, for requests with a body, a matching versioned `Content-Type`; `DEFAULT_ACCEPT` / `DEFAULT_CONTENT_TYPE` are fallbacks
 - self-referencing types call `model_rebuild()` at the end of the module
 - enum members are sanitized: `<` → `LT`, `>` → `GT`, and invalid or duplicate names get a suffix
+- all-uppercase string enums accept any casing and normalize to the canonical value (`"secondary"` → `"SECONDARY"`); mixed-case enums stay strict
 
 Usage:
 

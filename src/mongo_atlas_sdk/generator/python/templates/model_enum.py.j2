@@ -2,9 +2,9 @@
 
 from __future__ import annotations
 
-from enum import Enum
+{{ enum_import }}
 
-class {{ name }}({{ base }}, Enum):
+class {{ name }}({{ class_bases }}):
 {{ description|docblock(4) }}
 {% for member in members %}
     {{ member.name }} = {{ member.value }}

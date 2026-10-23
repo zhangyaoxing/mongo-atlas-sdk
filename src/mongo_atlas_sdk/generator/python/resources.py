@@ -48,7 +48,10 @@ def _response_annotation(endpoint: Mapping[str, Any], imports: set[str]) -> str:
     expressions = _success_type_expressions(endpoint)
     if not expressions:
         return "None"
-    rendered = [annotation(expr, current="", imports=imports) for expr in expressions]
+    rendered = [
+        annotation(expr, current="", imports=imports, case_insensitive=False)
+        for expr in expressions
+    ]
     return " | ".join(dict.fromkeys(rendered))
 
 
@@ -127,18 +130,33 @@ def _render_method(endpoint: Mapping[str, Any], imports: set[str]) -> dict[str, 
     keyword_arguments: list[str] = []
 
     for parameter in path_parameters:
-        parameter_type = annotation(parameter.get("type") or {}, current="", imports=imports)
+        parameter_type = annotation(
+            parameter.get("type") or {},
+            current="",
+            imports=imports,
+            case_insensitive=False,
+        )
         arguments.append(f"{snake_case(str(parameter.get('name') or ''))}: {parameter_type}")
 
     if body is not None:
-        body_type = annotation(body.get("type") or {}, current="", imports=imports)
+        body_type = annotation(
+            body.get("type") or {},
+            current="",
+            imports=imports,
+            case_insensitive=False,
+        )
         if body.get("required"):
             arguments.append(f"body: {body_type}")
         else:
             keyword_arguments.append(f"body: {body_type} | None = None")
 
     for parameter in query_parameters:
-        parameter_type = annotation(parameter.get("type") or {}, current="", imports=imports)
+        parameter_type = annotation(
+            parameter.get("type") or {},
+            current="",
+            imports=imports,
+            case_insensitive=False,
+        )
         name = snake_case(str(parameter.get("name") or ""))
         if parameter.get("required"):
             keyword_arguments.append(f"{name}: {parameter_type}")

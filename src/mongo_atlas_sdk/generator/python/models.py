@@ -12,9 +12,9 @@ from mongo_atlas_sdk.generator.python.schema import annotation
 from mongo_atlas_sdk.generator.python.templating import docstring_text
 from mongo_atlas_sdk.generator.templating import render
 
-_TYPING = frozenset({"Any", "Literal", "TypeAlias"})
+_TYPING = frozenset({"Annotated", "Any", "Literal", "TypeAlias"})
 _DATETIME = frozenset({"datetime", "date"})
-_MODEL_IMPORT_SKIP = _TYPING | _DATETIME
+_MODEL_IMPORT_SKIP = _TYPING | _DATETIME | {"BeforeValidator", "upper_case"}
 
 
 def _import_block(imports: set[str], package: str) -> list[str]:
@@ -25,6 +25,8 @@ def _import_block(imports: set[str], package: str) -> list[str]:
     datetime_names = sorted(_DATETIME & imports)
     if datetime_names:
         lines.append(f"from datetime import {', '.join(datetime_names)}")
+    if "upper_case" in imports:
+        lines.append(f"from {package}._enums import upper_case")
     for name in sorted(imports - _MODEL_IMPORT_SKIP):
         lines.append(f"from {package}.models.{snake_case(name)} import {name}")
     return lines
@@ -113,12 +115,25 @@ def render_model(definition: Mapping[str, Any], *, package: str) -> str:
         )
 
     if kind == "enum":
-        base = "int" if definition.get("type") == "integer" else "str"
+        values = list(definition.get("values") or [])
+        string_values = [value for value in values if isinstance(value, str)]
+        if (
+            values
+            and len(string_values) == len(values)
+            and all(value == value.upper() for value in string_values)
+        ):
+            class_bases = "CaseInsensitiveEnum"
+            enum_import = f"from {package}._enums import CaseInsensitiveEnum"
+        else:
+            base = "int" if definition.get("type") == "integer" else "str"
+            class_bases = f"{base}, Enum"
+            enum_import = "from enum import Enum"
         return render(
             "python",
             "model_enum.py.j2",
             name=name,
-            base=base,
+            class_bases=class_bases,
+            enum_import=enum_import,
             description=docstring_text(
                 definition.get("description"), f"Generated enum for {name}."
             ),
@@ -140,6 +155,7 @@ def render_model(definition: Mapping[str, Any], *, package: str) -> str:
         name=name,
         imports=_import_block(imports, package),
         target=rendered_target,
+        before_validator="BeforeValidator" in imports,
     )
 
 
