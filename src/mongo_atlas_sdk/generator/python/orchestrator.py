@@ -9,6 +9,7 @@ from typing import Any
 
 from mongo_atlas_sdk.generator.errors import GeneratorError
 from mongo_atlas_sdk.generator.ir import hoist_inline_objects
+from mongo_atlas_sdk.generator.media import latest_media_type
 from mongo_atlas_sdk.generator.naming import pascal_case
 from mongo_atlas_sdk.generator.python.client import render_client
 from mongo_atlas_sdk.generator.python.models import render_model
@@ -39,6 +40,40 @@ def _package_init(package: str) -> str:
     return render("python", "package_init.py.j2", package=package)
 
 
+def _response_media_types(categories: list[Any]) -> list[str]:
+    media_types: list[str] = []
+    for category in categories:
+        if not isinstance(category, Mapping):
+            continue
+        for endpoint in category.get("endpoints") or []:
+            if not isinstance(endpoint, Mapping):
+                continue
+            for response in endpoint.get("responses") or []:
+                if not str(response.get("status") or "").startswith("2"):
+                    continue
+                for content in response.get("content") or []:
+                    media_type = content.get("content_type")
+                    if isinstance(media_type, str):
+                        media_types.append(media_type)
+    return media_types
+
+
+def _request_media_types(categories: list[Any]) -> list[str]:
+    media_types: list[str] = []
+    for category in categories:
+        if not isinstance(category, Mapping):
+            continue
+        for endpoint in category.get("endpoints") or []:
+            if not isinstance(endpoint, Mapping):
+                continue
+            body = endpoint.get("request_body")
+            if isinstance(body, Mapping):
+                media_type = body.get("content_type")
+                if isinstance(media_type, str):
+                    media_types.append(media_type)
+    return media_types
+
+
 def generate_python(
     docs: Mapping[str, Any],
     output_root: Path,
@@ -54,6 +89,10 @@ def generate_python(
         raise GeneratorError("normalized document has no 'categories' section")
 
     types = hoist_inline_objects(raw_types)
+    default_accept = latest_media_type(_response_media_types(categories)) or (
+        "application/vnd.atlas.2023-01-01+json"
+    )
+    default_content_type = latest_media_type(_request_media_types(categories)) or default_accept
 
     model_modules: dict[str, str] = {}
     for name in sorted(types):
@@ -101,7 +140,12 @@ def generate_python(
         encoding="utf-8",
     )
     (output_root / "client.py").write_text(
-        render_client(resource_modules, package=package),
+        render_client(
+            resource_modules,
+            package=package,
+            default_accept=default_accept,
+            default_content_type=default_content_type,
+        ),
         encoding="utf-8",
     )
     (output_root / "__init__.py").write_text(_package_init(package), encoding="utf-8")

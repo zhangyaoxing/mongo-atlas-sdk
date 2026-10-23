@@ -139,7 +139,7 @@ def _docs() -> dict[str, Any]:
                             }
                         ],
                         "request_body": {
-                            "content_type": "application/json",
+                            "content_type": "application/vnd.atlas.2024-10-23+json",
                             "required": True,
                             "description": "The cluster.",
                             "type": {"kind": "reference", "name": "Cluster"},
@@ -150,7 +150,7 @@ def _docs() -> dict[str, Any]:
                                 "description": "OK",
                                 "content": [
                                     {
-                                        "content_type": "application/json",
+                                        "content_type": "application/vnd.atlas.2024-08-05+json",
                                         "type": {
                                             "kind": "reference",
                                             "name": "PaginatedClusters",
@@ -183,7 +183,7 @@ def _docs() -> dict[str, Any]:
                                 "description": "OK",
                                 "content": [
                                     {
-                                        "content_type": "application/json",
+                                        "content_type": "application/vnd.atlas.2024-08-05+json",
                                         "type": {"kind": "reference", "name": "Node"},
                                     }
                                 ],
@@ -235,6 +235,10 @@ def test_generate_python_writes_models_resources_and_client(tmp_path: Path) -> N
 
     client = (tmp_path / package / "client.py").read_text(encoding="utf-8")
     assert f"from {package}.resources.clusters import Clusters" in client
+    assert 'DEFAULT_ACCEPT = "application/vnd.atlas.2024-08-05+json"' in client
+    assert 'DEFAULT_CONTENT_TYPE = "application/vnd.atlas.2024-10-23+json"' in client
+    assert 'accept="application/vnd.atlas.2024-08-05+json"' in resource
+    assert 'content_type="application/vnd.atlas.2024-10-23+json"' in resource
     assert "self.clusters = Clusters(self)" in client
 
 

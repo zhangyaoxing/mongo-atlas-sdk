@@ -43,5 +43,11 @@ class {{ class_name }}:
             json=body,
 {% endif %}
             response_model={{ method.response_model }},
+{% if method.accept %}
+            accept="{{ method.accept }}",
+{% endif %}
+{% if method.content_type %}
+            content_type="{{ method.content_type }}",
+{% endif %}
         )
 {% endfor %}

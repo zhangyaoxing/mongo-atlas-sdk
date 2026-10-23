@@ -8,14 +8,27 @@ from mongo_atlas_sdk.generator.python.naming import snake_case
 from mongo_atlas_sdk.generator.templating import render
 
 
-def render_client(resources: Mapping[str, str], *, package: str) -> str:
+def render_client(
+    resources: Mapping[str, str],
+    *,
+    package: str,
+    default_accept: str,
+    default_content_type: str,
+) -> str:
     """Render ``client.py`` for the given ``{class: module}`` mapping."""
     imports = [
         f"from {package}.resources.{module} import {name}"
         for name, module in sorted(resources.items())
     ]
     entries = [{"name": name, "attribute": snake_case(name)} for name in sorted(resources)]
-    return render("python", "client.py.j2", imports=imports, resources=entries)
+    return render(
+        "python",
+        "client.py.j2",
+        imports=imports,
+        resources=entries,
+        default_accept=default_accept,
+        default_content_type=default_content_type,
+    )
 
 
 __all__ = ["render_client"]

@@ -6,6 +6,7 @@ import json
 from collections.abc import Mapping
 from typing import Any
 
+from mongo_atlas_sdk.generator.media import latest_media_type
 from mongo_atlas_sdk.generator.naming import pascal_case
 from mongo_atlas_sdk.generator.paths import api_path
 from mongo_atlas_sdk.generator.python.naming import snake_case
@@ -28,6 +29,19 @@ def _success_type_expressions(endpoint: Mapping[str, Any]) -> list[Mapping[str, 
             if isinstance(type_expr, Mapping):
                 expressions.append(type_expr)
     return expressions
+
+
+def _accept_media_type(endpoint: Mapping[str, Any]) -> str | None:
+    """Pick the newest versioned media type declared by successful responses."""
+    media_types: list[str] = []
+    for response in endpoint.get("responses") or []:
+        if not str(response.get("status") or "").startswith(_SUCCESS_PREFIX):
+            continue
+        for content in response.get("content") or []:
+            media_type = content.get("content_type")
+            if isinstance(media_type, str):
+                media_types.append(media_type)
+    return latest_media_type(media_types)
 
 
 def _response_annotation(endpoint: Mapping[str, Any], imports: set[str]) -> str:
@@ -154,6 +168,12 @@ def _render_method(endpoint: Mapping[str, Any], imports: set[str]) -> dict[str, 
         "has_body": body is not None,
         "http_method": str(endpoint.get("method") or "GET"),
         "response_model": return_annotation,
+        "accept": _accept_media_type(endpoint),
+        "content_type": (
+            str(body.get("content_type"))
+            if body is not None and isinstance(body.get("content_type"), str)
+            else None
+        ),
     }
 
 
