@@ -28,6 +28,18 @@ def hoist_inline_objects(types: Mapping[str, Any]) -> dict[str, Any]:
         if not isinstance(expr, Mapping):
             return {"kind": "any"}
         kind = expr.get("kind")
+        if kind == "object" and "name" not in expr and not (expr.get("properties") or {}):
+            additional = expr.get("additional_properties")
+            if isinstance(additional, Mapping):
+                additional = transform(additional, owner, [*path, "Value"])
+            map_result = {
+                "kind": "object",
+                "properties": {},
+                "additional_properties": additional,
+            }
+            if expr.get("nullable"):
+                map_result["nullable"] = True
+            return map_result
         if kind == "object" and "name" not in expr:
             name = unique(owner + "".join(pascal_case(part) for part in path))
             properties: dict[str, Any] = {}

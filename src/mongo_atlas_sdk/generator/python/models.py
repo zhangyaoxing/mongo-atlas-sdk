@@ -100,6 +100,23 @@ def render_model(definition: Mapping[str, Any], *, package: str) -> str:
     kind = definition.get("kind")
     imports: set[str] = set()
 
+    if kind == "object" and not (definition.get("properties") or {}):
+        map_target: dict[str, Any] = {
+            "kind": "object",
+            "properties": {},
+            "additional_properties": definition.get("additional_properties"),
+        }
+        imports.add("TypeAlias")
+        rendered_target = annotation(map_target, current=name, imports=imports)
+        return render(
+            "python",
+            "model_alias.py.j2",
+            name=name,
+            imports=_import_block(imports, package),
+            target=rendered_target,
+            before_validator="BeforeValidator" in imports,
+        )
+
     if kind == "object":
         fields, rebuild = _object_fields(definition, name=name, imports=imports)
         return render(

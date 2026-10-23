@@ -72,6 +72,16 @@ def annotation(
         parts = list(dict.fromkeys(parts)) or ["Any"]
         return " | ".join(parts)
     if kind == "object":
+        if not (expr.get("properties") or {}):
+            additional = expr.get("additional_properties")
+            if isinstance(additional, Mapping):
+                value_type = annotation(
+                    additional,
+                    current=current,
+                    imports=imports,
+                    case_insensitive=case_insensitive,
+                )
+                return f"dict[str, {value_type}]"
         imports.add("Any")
         return "dict[str, Any]"
     imports.add("Any")

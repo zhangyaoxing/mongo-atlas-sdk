@@ -243,7 +243,7 @@ Generation is fully driven by Jinja2 templates in `src/mongo_atlas_sdk/generator
 
 Output (`pyatlassdk/src/pyatlassdk/`):
 
-- `models/`: one pydantic v2 model module per type (1068 in total)
+- `models/`: one pydantic v2 model module per type (1027 in total)
 - `resources/`: 55 resource classes with one method per endpoint (526 methods)
 - `client.py`: `AtlasClient`, which aggregates all resources and uses httpx Digest authentication
 - `__init__.py` / `py.typed`: package entry point and typing marker
@@ -251,6 +251,7 @@ Output (`pyatlassdk/src/pyatlassdk/`):
 Generation rules:
 
 - object → `BaseModel`; named enum → `str, Enum`; union / alias → `TypeAlias`
+- pure map schemas (`object` with only `additionalProperties`) → `dict[str, T]`; for example `awsPrivateLink` is `dict[str, str]`, not an empty class
 - inline enums → `Literal[...]`; inline anonymous objects get a synthesized class name based on the parent type and property path (for example `ApiErrorParametersItem`)
 - field names become snake_case and automatically get `Field(alias=...)` when they differ from the wire name; invalid identifiers such as `_id` and `2dsphereIndexVersion` are mapped correctly
 - endpoint paths are emitted relative to `base_url` (default `https://cloud.mongodb.com/api/atlas/v2`), so the `/api/atlas/v2` prefix is not duplicated

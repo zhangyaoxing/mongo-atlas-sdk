@@ -61,6 +61,17 @@ def _docs() -> dict[str, Any]:
                             "format": "date-time",
                         },
                     },
+                    "privateLink": {
+                        "required": False,
+                        "type": {
+                            "kind": "object",
+                            "properties": {},
+                            "additional_properties": {
+                                "kind": "primitive",
+                                "type": "string",
+                            },
+                        },
+                    },
                     "settings": {
                         "required": False,
                         "type": {
@@ -117,6 +128,12 @@ def _docs() -> dict[str, Any]:
                 "kind": "enum",
                 "type": "string",
                 "values": ["<", ">", "=="],
+            },
+            "StringMap": {
+                "name": "StringMap",
+                "kind": "object",
+                "properties": {},
+                "additional_properties": {"kind": "primitive", "type": "string"},
             },
         },
         "categories": [
@@ -209,7 +226,7 @@ def test_generate_python_writes_models_resources_and_client(tmp_path: Path) -> N
     package = f"gen_sdk_{uuid.uuid4().hex[:8]}"
     stats = generate_python(_docs(), tmp_path / package, package=package)
 
-    assert stats == {"models": 6, "resources": 1, "methods": 2}
+    assert stats == {"models": 7, "resources": 1, "methods": 2}
     model = (tmp_path / package / "models" / "cluster.py").read_text(encoding="utf-8")
     assert "class Cluster(BaseModel):" in model
     assert "name: str = Field(description=" in model
@@ -222,6 +239,7 @@ def test_generate_python_writes_models_resources_and_client(tmp_path: Path) -> N
     assert 'disk_size_gb: float | None = Field(default=None, alias="diskSizeGB")' in model
     assert "tags: list[str] | None = None" in model
     assert "settings: ClusterSettings | None = None" in model
+    assert 'private_link: dict[str, str] | None = Field(default=None, alias="privateLink")' in model
 
     settings = (tmp_path / package / "models" / "cluster_settings.py").read_text(encoding="utf-8")
     assert "class ClusterSettings(BaseModel):" in settings
@@ -229,6 +247,9 @@ def test_generate_python_writes_models_resources_and_client(tmp_path: Path) -> N
 
     node = (tmp_path / package / "models" / "node.py").read_text(encoding="utf-8")
     assert "Node.model_rebuild()" in node
+
+    string_map = (tmp_path / package / "models" / "string_map.py").read_text(encoding="utf-8")
+    assert "StringMap: TypeAlias = dict[str, str]" in string_map
 
     operator = (tmp_path / package / "models" / "operator.py").read_text(encoding="utf-8")
     assert "class Operator(CaseInsensitiveEnum):" in operator
@@ -331,7 +352,7 @@ def test_cli_pygen_writes_package(
     assert main(["pygen", "-i", str(source), "-o", str(output), "--package", "demo"]) == 0
 
     assert (output / "client.py").exists()
-    assert "6 models, 1 resources, 2 methods" in capsys.readouterr().out
+    assert "7 models, 1 resources, 2 methods" in capsys.readouterr().out
 
 
 def _load_generated_client(tmp_path: Path) -> tuple[str, Any]:
@@ -447,7 +468,7 @@ def test_registry_exposes_python_target() -> None:
 def test_generate_dispatches_by_language(tmp_path: Path) -> None:
     stats = generate("python", _docs(), output_root=tmp_path / "pkg", package="pkg")
 
-    assert stats == {"models": 6, "resources": 1, "methods": 2}
+    assert stats == {"models": 7, "resources": 1, "methods": 2}
     assert (tmp_path / "pkg" / "client.py").exists()
 
 
@@ -482,7 +503,7 @@ def test_cli_generate_accepts_language(
     )
 
     assert (output / "client.py").exists()
-    assert "6 models, 1 resources, 2 methods" in capsys.readouterr().out
+    assert "7 models, 1 resources, 2 methods" in capsys.readouterr().out
 
 
 def test_api_path_is_relative_to_base_url() -> None:
