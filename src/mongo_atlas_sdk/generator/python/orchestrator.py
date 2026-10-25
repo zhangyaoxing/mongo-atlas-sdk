@@ -36,8 +36,13 @@ def _resources_init(modules: Mapping[str, str], package: str) -> str:
     return render("python", "resources_init.py.j2", package=package, resources=entries)
 
 
-def _package_init(package: str) -> str:
-    return render("python", "package_init.py.j2", package=package)
+def _package_init(package: str, client_class: str) -> str:
+    return render(
+        "python",
+        "package_init.py.j2",
+        package=package,
+        client_class=client_class,
+    )
 
 
 def _response_media_types(categories: list[Any]) -> list[str]:
@@ -79,6 +84,10 @@ def generate_python(
     output_root: Path,
     *,
     package: str = DEFAULT_PACKAGE,
+    client_class: str = "AtlasClient",
+    base_url: str = "https://cloud.mongodb.com/api/atlas/v2",
+    auth_mode: str = "atlas",
+    path_prefix: str | None = "/api/atlas/v2",
 ) -> dict[str, int]:
     """Generate models, resources, and ``client.py`` under ``output_root``."""
     raw_types = docs.get("types")
@@ -89,9 +98,7 @@ def generate_python(
         raise GeneratorError("normalized document has no 'categories' section")
 
     types = hoist_inline_objects(raw_types)
-    default_accept = latest_media_type(_response_media_types(categories)) or (
-        "application/vnd.atlas.2023-01-01+json"
-    )
+    default_accept = latest_media_type(_response_media_types(categories)) or "application/json"
     default_content_type = latest_media_type(_request_media_types(categories)) or default_accept
 
     model_modules: dict[str, str] = {}
@@ -130,7 +137,12 @@ def generate_python(
         class_name = pascal_case(str(category.get("name") or "Untagged"))
         module = resource_modules[class_name]
         (resources_dir / f"{module}.py").write_text(
-            render_resource(category, package=package),
+            render_resource(
+                category,
+                package=package,
+                client_class=client_class,
+                path_prefix=path_prefix,
+            ),
             encoding="utf-8",
         )
         method_count += len(category.get("endpoints") or [])
@@ -143,13 +155,17 @@ def generate_python(
         render_client(
             resource_modules,
             package=package,
+            client_class=client_class,
+            base_url=base_url,
+            auth_mode=auth_mode,
             default_accept=default_accept,
             default_content_type=default_content_type,
         ),
         encoding="utf-8",
     )
     (output_root / "_enums.py").write_text(render("python", "enums.py.j2"), encoding="utf-8")
-    (output_root / "__init__.py").write_text(_package_init(package), encoding="utf-8")
+    (output_root / "_errors.py").write_text(render("python", "errors.py.j2"), encoding="utf-8")
+    (output_root / "__init__.py").write_text(_package_init(package, client_class), encoding="utf-8")
     (output_root / "py.typed").write_text("", encoding="utf-8")
 
     return {

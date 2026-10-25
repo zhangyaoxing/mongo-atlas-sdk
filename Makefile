@@ -3,10 +3,12 @@
 UV ?= uv
 SDK_LANG ?= python
 
-.PHONY: help install lock lint format format-check typecheck test crawl normalize generate pygen pipeline coverage check build clean
+.PHONY: help install lock lint format format-check typecheck test coverage \
+	crawl normalize generate pygen crawl-app normalize-app generate-app pygen-app \
+	pipeline pipeline-admin pipeline-app check build clean
 
 help: ## Show available targets
-	@grep -E '^[a-zA-Z_-]+:.*?## ' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "  \033[36m%-14s\033[0m %s\n", $$1, $$2}'
+	@grep -E '^[a-zA-Z_-]+:.*?## ' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "  \033[36m%-16s\033[0m %s\n", $$1, $$2}'
 
 install: ## Create .venv and install all dependencies
 	$(UV) sync
@@ -33,19 +35,35 @@ test: ## Run the test suite
 coverage: ## Run tests with a coverage report
 	$(UV) run pytest --cov --cov-report=term-missing
 
-crawl: ## Fetch the latest Atlas docs into .data/api_docs.json
-	$(UV) run mongo-atlas crawl
+crawl: ## Fetch the Atlas Admin API spec into .data/api_docs.json
+	$(UV) run mongo-atlas crawl --api admin
 
-normalize: ## Clean api_docs.json into normalized_api_docs.json
-	$(UV) run mongo-atlas normalize
+normalize: ## Normalize the Admin API spec
+	$(UV) run mongo-atlas normalize --api admin
 
-generate: ## Generate an SDK for a target language (LANG=python by default)
-	$(UV) run mongo-atlas generate --language $(SDK_LANG)
+generate: ## Generate the Admin SDK (SDK_LANG=python by default)
+	$(UV) run mongo-atlas generate --language $(SDK_LANG) --api admin
 
-pygen: ## Alias for `generate --language python`
-	$(UV) run mongo-atlas pygen
+pygen: ## Alias for `generate --language python --api admin`
+	$(UV) run mongo-atlas pygen --api admin
 
-pipeline: crawl normalize generate ## Run the full crawl -> normalize -> generate pipeline
+crawl-app: ## Fetch the App Services Admin API spec
+	$(UV) run mongo-atlas crawl --api app
+
+normalize-app: ## Normalize the App Services Admin API spec
+	$(UV) run mongo-atlas normalize --api app
+
+generate-app: ## Generate the App Services SDK (SDK_LANG=python by default)
+	$(UV) run mongo-atlas generate --language $(SDK_LANG) --api app
+
+pygen-app: ## Alias for `generate --language python --api app`
+	$(UV) run mongo-atlas pygen --api app
+
+pipeline: pipeline-admin pipeline-app ## Run both API pipelines
+
+pipeline-admin: crawl normalize pygen ## Admin API: crawl -> normalize -> generate
+
+pipeline-app: crawl-app normalize-app pygen-app ## App Services API: crawl -> normalize -> generate
 
 check: lint format-check typecheck test ## Run every check used by CI
 

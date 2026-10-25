@@ -8,6 +8,7 @@ from typing import Any
 
 PRIMITIVE_TYPES = frozenset({"string", "integer", "number", "boolean"})
 _ALIAS_KEYS = frozenset({"$ref", "description", "title"})
+_SCHEMA_REF_PREFIX = "#/components/schemas/"
 _DELIMITER = re.compile(r"[^0-9A-Za-z]+")
 _CAMEL_BOUNDARY = re.compile(r"(?<=[a-z0-9])(?=[A-Z])")
 
@@ -22,6 +23,21 @@ def pascal_case(raw: str) -> str:
     if name[0].isdigit():
         return f"Type{name}"
     return name
+
+
+def _ref_tokens(ref: str) -> list[str]:
+    suffix = ref[len(_SCHEMA_REF_PREFIX) :] if ref.startswith(_SCHEMA_REF_PREFIX) else ref
+    return [token.replace("~1", "/").replace("~0", "~") for token in suffix.split("/")]
+
+
+def _const_type(value: object) -> str:
+    if isinstance(value, bool):
+        return "boolean"
+    if isinstance(value, int):
+        return "integer"
+    if isinstance(value, float):
+        return "number"
+    return "string"
 
 
 class SchemaNormalizer:
@@ -76,6 +92,9 @@ class SchemaNormalizer:
         if isinstance(kind, list):
             return self._type_list_expression(schema, kind)
 
+        if kind == "null":
+            return {"kind": "primitive", "type": "null"}
+
         if kind == "array":
             array_expr: dict[str, Any] = {
                 "kind": "array",
@@ -90,6 +109,17 @@ class SchemaNormalizer:
             if schema.get("nullable"):
                 object_expr["nullable"] = True
             return object_expr
+
+        if "const" in schema and schema["const"] is not None:
+            value = schema["const"]
+            const_expr: dict[str, Any] = {
+                "kind": "enum",
+                "type": kind if isinstance(kind, str) else _const_type(value),
+                "values": [value],
+                "const": True,
+            }
+            self._apply_scalar_metadata(const_expr, schema)
+            return const_expr
 
         if "enum" in schema:
             enum_expr: dict[str, Any] = {
@@ -120,6 +150,8 @@ class SchemaNormalizer:
     def _type_list_expression(self, schema: Mapping[str, Any], kinds: list[Any]) -> dict[str, Any]:
         non_null = [kind for kind in kinds if kind != "null"]
         nullable = "null" in kinds
+        if not non_null:
+            return {"kind": "primitive", "type": "null"}
         if len(non_null) == 1:
             clone = dict(schema)
             clone["type"] = non_null[0]
@@ -184,9 +216,14 @@ class SchemaNormalizer:
             return raw, current
 
     def _lookup(self, ref: str) -> Mapping[str, Any] | None:
-        name = ref.rsplit("/", 1)[-1]
-        raw = self._schemas.get(name)
-        return raw if isinstance(raw, Mapping) else None
+        if not ref.startswith(_SCHEMA_REF_PREFIX):
+            return None
+        node: Any = self._schemas
+        for token in _ref_tokens(ref):
+            if not isinstance(node, Mapping):
+                return None
+            node = node.get(token)
+        return node if isinstance(node, Mapping) else None
 
     def _ensure_type(self, ref: str, raw: Mapping[str, Any]) -> str:
         existing = self._names_by_ref.get(ref)
@@ -200,7 +237,7 @@ class SchemaNormalizer:
         return name
 
     def _unique_name(self, ref: str) -> str:
-        base = pascal_case(ref.rsplit("/", 1)[-1])
+        base = pascal_case("_".join(_ref_tokens(ref)))
         candidate = base
         counter = 2
         while candidate in self.types:
@@ -248,6 +285,23 @@ class SchemaNormalizer:
             definition.update(self._object_expression(raw))
             if raw.get("nullable"):
                 definition["nullable"] = True
+            return definition
+
+        if raw.get("type") == "null":
+            definition.update({"kind": "primitive", "type": "null"})
+            return definition
+
+        if "const" in raw and raw["const"] is not None:
+            value = raw["const"]
+            definition.update(
+                {
+                    "kind": "enum",
+                    "type": kind if isinstance(kind, str) else _const_type(value),
+                    "values": [value],
+                    "const": True,
+                }
+            )
+            self._apply_scalar_metadata(definition, raw)
             return definition
 
         if "enum" in raw:

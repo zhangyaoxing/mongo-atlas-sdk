@@ -2,7 +2,7 @@
 
 # mongo-atlas-sdk
 
-MongoDB Atlas SDK generator and CLI (Python ≥ 3.10). The generated SDK is published as [pyatlassdk](https://pypi.org/project/pyatlassdk/).
+MongoDB Atlas SDK generator and CLI (Python ≥ 3.10). It generates Python SDKs for the Atlas Administration API v2 and the App Services Admin API v3; both are published together as [pyatlassdk](https://pypi.org/project/pyatlassdk/).
 
 ## Requirements
 
@@ -13,12 +13,10 @@ MongoDB Atlas SDK generator and CLI (Python ≥ 3.10). The generated SDK is publ
 
 ```bash
 uv sync                # create .venv and install dependencies
-make pipeline          # crawl -> normalize -> generate, in one command
-# or run each step separately:
-make crawl             # .data/api_docs.json
-make normalize         # .data/normalized_api_docs.json
-make generate          # SDK for SDK_LANG=python (the default)
-make pygen             # alias for `generate --language python`
+make pipeline          # both APIs: crawl -> normalize -> generate
+# or run one API at a time:
+make pipeline-admin    # .data/api_docs.json -> pyatlassdk/admin
+make pipeline-app      # .data/api_docs.app.json -> pyatlassdk/app
 ```
 
 ## Common commands
@@ -34,28 +32,31 @@ make pygen             # alias for `generate --language python`
 | `make check` | Run the same checks as CI |
 | `make build` | Build sdist / wheel into `dist/` |
 | `make lock` | Refresh `uv.lock` |
-| `make crawl` | Fetch the latest OpenAPI document into `.data/api_docs.json` |
-| `make normalize` | Clean it into `.data/normalized_api_docs.json` |
-| `make generate` | Generate an SDK (`SDK_LANG=python` by default) |
-| `make pygen` | Alias for `generate --language python` |
-| `make pipeline` | Run crawl → normalize → generate |
-| `uv run mongo-atlas crawl` | CLI: crawl |
-| `uv run mongo-atlas normalize` | CLI: normalize |
-| `uv run mongo-atlas generate --language python` | CLI: generate |
-| `uv run mongo-atlas pygen` | CLI: alias for the Python target |
+| `make crawl` / `make crawl-app` | Fetch the Admin API / App Services spec |
+| `make normalize` / `make normalize-app` | Normalize the Admin / App Services spec |
+| `make pygen` / `make pygen-app` | Generate the Admin / App Services SDK |
+| `make pipeline` | Run both API pipelines |
+| `make pipeline-admin` / `make pipeline-app` | Run one API pipeline |
+| `uv run mongo-atlas crawl --api app` | CLI: crawl a specific API (`admin` or `app`) |
+| `uv run mongo-atlas normalize --api app` | CLI: normalize a specific API |
+| `uv run mongo-atlas pygen --api app` | CLI: generate a specific API |
 
 ## Crawling the API docs
 
-The Atlas documentation site (`/docs/api/doc/atlas-admin-api-v2`) renders its content from the official OpenAPI document, which is offered as a download at the same source:
+Both documentation sites render their content from official OpenAPI documents, which are offered as downloads at the same sources:
 
-- `https://www.mongodb.com/docs/api/doc/atlas-admin-api-v2.json` (OpenAPI 3.0.1, about 4.7 MB)
+| API | OpenAPI document | Version | Raw output |
+| --- | --- | --- | --- |
+| Atlas Administration API v2 | `https://www.mongodb.com/docs/api/doc/atlas-admin-api-v2.json` | 3.0.1 | `.data/api_docs.json` |
+| App Services Admin API v3 | `https://www.mongodb.com/docs/api/doc/atlas-app-services-admin-api-v3.json` | 3.1.0 | `.data/api_docs.app.json` |
 
-The crawler therefore parses this JSON directly instead of rendering the page with Playwright: the fields (`type` / `required` / `description`) are identical, but only one request is needed and the structure is stable. A full crawl takes about 2 seconds.
+The crawler therefore parses these JSON documents directly instead of rendering the pages with Playwright: the fields (`type` / `required` / `description`) are identical, but only one request is needed and the structure is stable. A full crawl takes about 2 seconds.
 
 ```bash
-uv run mongo-atlas crawl                       # download and write .data/api_docs.json
-uv run mongo-atlas crawl --spec local.json     # use a local OpenAPI file (offline/testing)
-uv run mongo-atlas crawl -o /tmp/docs.json     # custom output path
+uv run mongo-atlas crawl                       # Admin API -> .data/api_docs.json
+uv run mongo-atlas crawl --api app             # App Services -> .data/api_docs.app.json
+uv run mongo-atlas crawl --api app --spec local.json   # local OpenAPI file
+uv run mongo-atlas crawl --api app -o /tmp/docs.json   # custom output path
 ```
 
 Output `.data/api_docs.json` (`.data/` is git-ignored):
@@ -144,7 +145,9 @@ The normalization stage:
 - normalizes type names to PascalCase and appends a numeric suffix on collisions;
 - converts arrays, inline objects, `additionalProperties`, `enum`, `nullable`, `format` / `default` into closed type expressions.
 
-Output structure (`.data/normalized_api_docs.json`):
+`--api app` normalizes the App Services document into `.data/normalized_api_docs.app.json`. That spec is OpenAPI 3.1, so the normalizer also handles `const`, `type: "null"`, and nested `$ref` targets such as `#/components/schemas/Logs/API`.
+
+Output structure (`.data/normalized_api_docs.json`, Admin API):
 
 ```json
 {
@@ -223,30 +226,39 @@ The `kind` of a type expression is one of `primitive`, `enum`, `array`, `object`
 
 | Language | Status | Default output | Generator |
 | --- | --- | --- | --- |
-| Python | supported | `pyatlassdk/src/pyatlassdk` | `generator/python/` |
+| Python | supported | `pyatlassdk/admin`, `pyatlassdk/app` | `generator/python/` |
 | JavaScript | planned | – | – |
 | Rust | planned | – | – |
 
-## Generating an SDK
+## Generating SDKs
 
-The Python target writes into the separate [pyatlassdk](https://github.com/zhangyaoxing/pyatlassdk) repository, which is attached to this repository as a submodule:
+Both SDKs live in the separate [pyatlassdk](https://github.com/zhangyaoxing/pyatlassdk) repository (a submodule of this repo), one subpackage per API:
+
+| API | Package | Client | Authentication |
+| --- | --- | --- | --- |
+| Atlas Administration API v2 | `pyatlassdk.admin` | `AtlasAdminClient` | Digest API keys or OAuth 2.0 service accounts |
+| App Services Admin API v3 | `pyatlassdk.app` | `AtlasAppAdminClient` | Bearer access token, or `AtlasAppAdminClient.login(username, api_key)` |
+
+The root package re-exports both clients:
+
+```python
+from pyatlassdk import AtlasAdminClient, AtlasAppAdminClient
+```
 
 ```bash
 git clone --recurse-submodules git@github.com:zhangyaoxing/mongo-atlas-sdk.git
-make generate                                            # SDK_LANG=python by default
-make generate SDK_LANG=python                            # explicit language
-make pygen                                               # alias for the Python target
-uv run mongo-atlas generate --language python -o /tmp/sdk --package sdk
+make pygen                                               # Admin SDK -> pyatlassdk/admin
+make pygen-app                                           # App Services SDK -> pyatlassdk/app
+make pipeline                                            # both API pipelines
+uv run mongo-atlas pygen --api app -o /tmp/sdk --package sdk
 ```
 
-Generation is fully driven by Jinja2 templates in `src/mongo_atlas_sdk/generator/python/templates/`, with `normalized_api_docs.json` as the only input. The same input produces byte-identical output; there is no model inference or manual editing involved.
+Generation is fully driven by Jinja2 templates in `src/mongo_atlas_sdk/generator/python/templates/`, with the normalized document as the only input. The same input produces byte-identical output; there is no model inference or manual editing involved.
 
-Output (`pyatlassdk/src/pyatlassdk/`):
+Output:
 
-- `models/`: one pydantic v2 model module per type (1027 in total)
-- `resources/`: 55 resource classes with one method per endpoint (526 methods)
-- `client.py`: `AtlasClient`, which aggregates all resources and uses httpx Digest authentication
-- `__init__.py` / `py.typed`: package entry point and typing marker
+- Admin (`pyatlassdk/admin/`): 1027 pydantic models, 55 resource classes and 526 methods; `client.py` defines `AtlasAdminClient`
+- App Services (`pyatlassdk/app/`): 253 pydantic models, 30 resource classes and 181 methods; `client.py` defines `AtlasAppAdminClient`
 
 Generation rules:
 
@@ -254,86 +266,100 @@ Generation rules:
 - pure map schemas (`object` with only `additionalProperties`) → `dict[str, T]`; for example `awsPrivateLink` is `dict[str, str]`, not an empty class
 - inline enums → `Literal[...]`; inline anonymous objects get a synthesized class name based on the parent type and property path (for example `ApiErrorParametersItem`)
 - field names become snake_case and automatically get `Field(alias=...)` when they differ from the wire name; invalid identifiers such as `_id` and `2dsphereIndexVersion` are mapped correctly
-- endpoint paths are emitted relative to `base_url` (default `https://cloud.mongodb.com/api/atlas/v2`), so the `/api/atlas/v2` prefix is not duplicated
+- endpoint paths are emitted relative to each client's `base_url`; the Admin client strips `/api/atlas/v2`, while App Services paths are already relative to `/api/admin/v3.0`
 - request bodies are serialized with pydantic's JSON mode, so `datetime` / `date` fields become ISO 8601 strings before httpx encodes them
-- every method sends the Atlas versioned `Accept` header (the newest version declared by that endpoint's successful responses) and, for requests with a body, a matching versioned `Content-Type`; `DEFAULT_ACCEPT` / `DEFAULT_CONTENT_TYPE` are fallbacks
+- Admin methods send the versioned `Accept` header declared by each endpoint's successful responses; App Services methods use `application/json`
 - self-referencing types call `model_rebuild()` at the end of the module
 - enum members are sanitized: `<` → `LT`, `>` → `GT`, and invalid or duplicate names get a suffix
 - all-uppercase string enums accept any casing and normalize to the canonical value (`"secondary"` → `"SECONDARY"`); mixed-case enums stay strict
 
-Usage:
+Admin usage:
 
 ```python
-from pyatlassdk import AtlasClient
-from pyatlassdk.models.cluster_description20240805 import ClusterDescription20240805
+from pyatlassdk import AtlasAdminClient
+from pyatlassdk.admin.models.cluster_description20240805 import ClusterDescription20240805
 
 # Digest authentication with Atlas API keys
-with AtlasClient(public_key="...", private_key="...") as client:
+with AtlasAdminClient(public_key="...", private_key="...") as client:
     cluster = client.clusters.create_group_cluster(
         group_id="...",
         body=ClusterDescription20240805(name="demo", cluster_type="REPLICASET"),
     )
 
 # OAuth 2.0 client credentials with Atlas service account credentials
-with AtlasClient(client_id="...", client_secret="...") as client:
+with AtlasAdminClient(client_id="...", client_secret="...") as client:
     cluster = client.clusters.create_group_cluster(
         group_id="...",
         body=ClusterDescription20240805(name="demo", cluster_type="REPLICASET"),
     )
 ```
 
-`AtlasClient` supports both authentication modes and rejects mixed or incomplete credentials. OAuth 2.0 tokens are fetched from `https://cloud.mongodb.com/api/oauth/token` with the `client_credentials` grant, cached until shortly before `expires_in`, and refreshed once when the API returns `401`. Override the endpoint with `oauth_token_url=...` if needed.
+App Services usage:
+
+```python
+from pyatlassdk import AtlasAppAdminClient
+
+# Exchange API-key credentials for an access token
+client = AtlasAppAdminClient.login(username="...", api_key="...")
+apps = client.apps.admin_list_applications(group_id="...")
+
+# Or reuse an existing access token
+with AtlasAppAdminClient(access_token="...") as client:
+    apps = client.apps.admin_list_applications(group_id="...")
+```
 
 Notes:
 
 - Generation is idempotent; repeated runs produce the same result.
-- `pyatlassdk/src/pyatlassdk/` is owned by the generator; manual edits are overwritten on the next run.
-- The `pyatlassdk` `pyproject.toml` excludes the generated directories from ruff; build and publish happen in that repository too.
+- `pyatlassdk/admin/` and `pyatlassdk/app/` are owned by the generator; `pyatlassdk/__init__.py` is hand-maintained and re-exports both clients.
+- `AtlasClient` remains as an alias for `AtlasAdminClient` for backwards compatibility.
+- The `pyatlassdk` `pyproject.toml` excludes both generated packages from ruff; build and publish happen in that repository too.
 - Commit order: commit and push in `pyatlassdk/` first, then commit the new submodule pointer here.
-- Fields without `required` in `normalized_api_docs.json` become optional parameters. That reflects the spec, not a generator assumption.
+- Fields without `required` in the normalized document become optional parameters. That reflects the spec, not a generator assumption.
 
 ### Adding a language
 
 Crawling and normalization are language-agnostic; only the rendering stage changes. The generator is laid out so a new target is a self-contained subpackage:
 
 ```
-src/mongo_atlas_sdk/generator/
-├── ir.py             # shared type-graph transforms (inline hoisting, references)
-├── naming.py         # shared PascalCase normalization
-├── templating.py     # Jinja2 environment factory (one per language package)
-├── registry.py       # language -> default output/package + orchestrator
-└── python/           # the Python target
-    ├── orchestrator.py
-    ├── models.py / resources.py / client.py
-    ├── naming.py / schema.py / templating.py
-    └── templates/    # .py.j2 templates
+src/mongo_atlas_sdk/
+├── apis.py           # API targets: spec URL, package, client class, auth, base URL
+└── generator/
+    ├── ir.py         # shared type-graph transforms (inline hoisting, references)
+    ├── naming.py     # shared PascalCase normalization
+    ├── templating.py # Jinja2 environment factory (one per language package)
+    ├── registry.py   # language -> default output/package + orchestrator
+    └── python/       # the Python target
+        ├── orchestrator.py
+        ├── models.py / resources.py / client.py
+        ├── naming.py / schema.py / templating.py
+        └── templates/  # .atlas/ bearer client templates + model/resource templates
 ```
 
 To add JavaScript, Rust, or another language:
 
-1. Create `generator/<language>/` with an `orchestrator.py` that exposes
-   `generate_<language>(docs, output_root, *, package)` and returns the same
-   stats dict as the Python backend.
-2. Add the language's templates under `generator/<language>/templates/`;
-   `generator.templating.render(language, template, **context)` loads them.
-3. Register a `LanguageTarget` in `registry.py` with the default output path,
-   package name, and orchestrator.
-4. `make generate SDK_LANG=<language>` and the CLI `--language` flag work
-   immediately. Add generator tests for the new backend.
+1. Create `generator/<language>/` with an `orchestrator.py` that exposes `generate_<language>(docs, output_root, *, api)` and returns the same stats dict as the Python backend.
+2. Add the language's templates under `generator/<language>/templates/`; `generator.templating.render(language, template, **context)` loads them.
+3. Register a `LanguageTarget` in `registry.py` with the default output path, package name, and orchestrator.
+4. Add Makefile targets that pass the API key (`admin` or `app`). Add generator tests for the new backend.
 
-The crawler, normalizer, CLI plumbing, and `make pipeline` stay unchanged.
+The crawler, normalizer, API targets, and CLI plumbing stay unchanged.
 
 ## Project layout
 
 ```
 .
-├── pyatlassdk/               # submodule: the generated SDK (published to PyPI)
+├── pyatlassdk/               # submodule: generated SDKs (published to PyPI)
+│   ├── __init__.py           # hand-maintained: exports both clients
+│   ├── admin/               # generated Atlas Admin API v2 SDK
+│   └── app/                 # generated App Services Admin API v3 SDK
 ├── src/mongo_atlas_sdk/      # generator (CLI + crawl + normalize + code generation)
 │   ├── __init__.py
 │   ├── __main__.py           # python -m mongo_atlas_sdk
+│   ├── apis.py               # API targets (spec, package, client, auth, base URL)
 │   ├── cli.py                # console script: mongo-atlas
 │   ├── config.py             # environment-based settings
-│   ├── crawler/              # OpenAPI -> api_docs.json
+│   ├── crawler/              # OpenAPI -> api_docs*.json
 │   │   ├── loader.py
 │   │   └── extract.py
 │   ├── normalizer/           # api_docs.json -> normalized_api_docs.json
@@ -352,7 +378,7 @@ The crawler, normalizer, CLI plumbing, and `make pipeline` stay unchanged.
 │   │       ├── naming.py
 │   │       ├── schema.py
 │   │       ├── templating.py
-│   │       └── templates/    # .py.j2 templates
+│   │       └── templates/    # model/resource/atlas & bearer client .j2
 │   └── py.typed              # PEP 561 typing marker
 ├── tests/                    # pytest tests (fixtures/mini_openapi.json)
 ├── .data/                    # crawl artifacts (git-ignored)

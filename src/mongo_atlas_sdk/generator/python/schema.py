@@ -11,6 +11,7 @@ PRIMITIVE_TYPES = {
     "integer": "int",
     "number": "float",
     "boolean": "bool",
+    "null": "None",
 }
 
 _STRING_FORMATS = {

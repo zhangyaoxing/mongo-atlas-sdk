@@ -16,19 +16,12 @@ from pydantic import BaseModel, TypeAdapter
 {% endfor %}
 {% endif %}
 
-DEFAULT_BASE_URL = "https://cloud.mongodb.com/api/atlas/v2"
+from {{ package }}._errors import AtlasApiError
+
+DEFAULT_BASE_URL = "{{ base_url }}"
 DEFAULT_OAUTH_TOKEN_URL = "https://cloud.mongodb.com/api/oauth/token"
 DEFAULT_ACCEPT = "{{ default_accept }}"
 DEFAULT_CONTENT_TYPE = "{{ default_content_type }}"
-
-
-class AtlasApiError(Exception):
-    """Raised when the Atlas API returns a non-successful response."""
-
-    def __init__(self, status_code: int, message: str, payload: Any = None) -> None:
-        super().__init__(f"HTTP {status_code}: {message}")
-        self.status_code = status_code
-        self.payload = payload
 
 
 def _serialize(value: Any) -> Any:
@@ -50,7 +43,7 @@ def _payload(response: httpx.Response) -> Any:
         return response.text
 
 
-class AtlasClient:
+class {{ client_class }}:
     """Synchronous client for the MongoDB Atlas Administration API.
 
     Supports HTTP Digest authentication with Atlas API keys and OAuth 2.0
@@ -110,7 +103,7 @@ class AtlasClient:
         """Close the underlying HTTP connection pool."""
         self._http.close()
 
-    def __enter__(self) -> AtlasClient:
+    def __enter__(self) -> {{ client_class }}:
         return self
 
     def __exit__(self, *args: object) -> None:

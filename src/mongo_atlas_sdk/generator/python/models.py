@@ -50,7 +50,11 @@ def _object_fields(
 
         type_expr = property_definition.get("type") or {}
         resolved = annotation(type_expr, current=name, imports=imports)
-        if type_expr.get("nullable") or not property_definition.get("required"):
+        if resolved == "None":
+            optional = False
+        else:
+            optional = type_expr.get("nullable") or not property_definition.get("required")
+        if optional:
             resolved = f"{resolved} | None"
 
         alias_needed = field != property_name

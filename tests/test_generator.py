@@ -510,3 +510,52 @@ def test_api_path_is_relative_to_base_url() -> None:
     assert api_path("/api/atlas/v2/groups/x/clusters") == "/groups/x/clusters"
     assert api_path("/api/atlas/v2") == "/"
     assert api_path("/health") == "/health"
+
+
+def test_generate_bearer_client(tmp_path: Path) -> None:
+    package = f"gen_app_{uuid.uuid4().hex[:8]}"
+    generate_python(
+        _docs(),
+        tmp_path / package,
+        package=package,
+        client_class="AtlasAppAdminClient",
+        base_url="https://services.example/api/admin/v3.0",
+        auth_mode="bearer",
+        path_prefix=None,
+    )
+
+    client = (tmp_path / package / "client.py").read_text(encoding="utf-8")
+    assert "class AtlasAppAdminClient:" in client
+    assert 'DEFAULT_BASE_URL = "https://services.example/api/admin/v3.0"' in client
+    assert "def login(" in client
+    assert "from pyatlassdk._errors import AtlasApiError" not in client
+
+
+def test_cli_pygen_supports_app_api(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    source = tmp_path / "normalized_app.json"
+    source.write_text(json.dumps(_docs()), encoding="utf-8")
+    output = tmp_path / "app_sdk"
+
+    assert (
+        main(
+            [
+                "pygen",
+                "--api",
+                "app",
+                "-i",
+                str(source),
+                "-o",
+                str(output),
+                "--package",
+                "app_demo",
+            ]
+        )
+        == 0
+    )
+
+    client = (output / "client.py").read_text(encoding="utf-8")
+    assert "class AtlasAppAdminClient:" in client
+    assert "7 models, 1 resources, 2 methods" in capsys.readouterr().out

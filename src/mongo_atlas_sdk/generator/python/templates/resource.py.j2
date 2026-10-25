@@ -9,13 +9,13 @@ from __future__ import annotations
 {% endif %}
 
 if TYPE_CHECKING:
-    from {{ package }}.client import AtlasClient
+    from {{ package }}.client import {{ client_class }}
 
 
 class {{ class_name }}:
 {{ description|docblock(4) }}
 
-    def __init__(self, client: AtlasClient) -> None:
+    def __init__(self, client: {{ client_class }}) -> None:
         self._client = client
 {% for method in methods %}
 

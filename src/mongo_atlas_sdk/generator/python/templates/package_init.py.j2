@@ -1,14 +1,5 @@
-"""Generated MongoDB Atlas SDK. Do not edit manually."""
+"""Generated {{ client_class }} package. Do not edit manually."""
 
-from __future__ import annotations
+from {{ package }}.client import {{ client_class }}, AtlasApiError
 
-from importlib.metadata import PackageNotFoundError, version
-
-from {{ package }}.client import AtlasApiError, AtlasClient
-
-try:
-    __version__ = version("{{ package }}")
-except PackageNotFoundError:  # pragma: no cover - running from a source checkout
-    __version__ = "0.0.0"
-
-__all__ = ["AtlasApiError", "AtlasClient", "__version__"]
+__all__ = ["{{ client_class }}", "AtlasApiError"]

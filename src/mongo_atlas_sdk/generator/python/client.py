@@ -12,6 +12,9 @@ def render_client(
     resources: Mapping[str, str],
     *,
     package: str,
+    client_class: str,
+    base_url: str,
+    auth_mode: str,
     default_accept: str,
     default_content_type: str,
 ) -> str:
@@ -21,11 +24,15 @@ def render_client(
         for name, module in sorted(resources.items())
     ]
     entries = [{"name": name, "attribute": snake_case(name)} for name in sorted(resources)]
+    template = "client_bearer.py.j2" if auth_mode == "bearer" else "client_atlas.py.j2"
     return render(
         "python",
-        "client.py.j2",
+        template,
         imports=imports,
         resources=entries,
+        package=package,
+        client_class=client_class,
+        base_url=base_url,
         default_accept=default_accept,
         default_content_type=default_content_type,
     )

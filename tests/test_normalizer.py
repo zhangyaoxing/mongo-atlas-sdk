@@ -419,3 +419,63 @@ def test_responses_are_normalized() -> None:
     assert normalized[0]["content"][0]["type"] == {"kind": "reference", "name": "Thing"}
     assert normalized[1]["content"] == []
     assert docs["meta"]["stats"]["types"] == 1
+
+
+def test_const_becomes_single_value_enum() -> None:
+    docs = normalize_api_docs(
+        _docs(
+            {
+                "Thing": {
+                    "type": "object",
+                    "properties": {"kind": {"const": "API"}},
+                }
+            },
+            {"$ref": "#/components/schemas/Thing"},
+        )
+    )
+
+    kind = docs["types"]["Thing"]["properties"]["kind"]["type"]
+    assert kind == {"kind": "enum", "type": "string", "values": ["API"], "const": True}
+
+
+def test_nested_refs_are_resolved() -> None:
+    schemas = {
+        "Logs": {
+            "Parts": {
+                "Base": {
+                    "type": "object",
+                    "properties": {"id": {"type": "string"}},
+                }
+            },
+            "API": {
+                "allOf": [
+                    {"$ref": "#/components/schemas/Logs/Parts/Base"},
+                    {
+                        "type": "object",
+                        "properties": {"kind": {"const": "API"}},
+                    },
+                ]
+            },
+        }
+    }
+
+    docs = normalize_api_docs(_docs(schemas, {"$ref": "#/components/schemas/Logs/API"}))
+
+    assert docs["meta"]["warnings"] == []
+    assert "LogsAPI" in docs["types"]
+    assert set(docs["types"]["LogsAPI"]["properties"]) == {"id", "kind"}
+
+
+def test_null_schema_becomes_a_null_primitive() -> None:
+    docs = normalize_api_docs(
+        _docs(
+            {},
+            {
+                "type": "object",
+                "properties": {"value": {"type": "null"}},
+            },
+        )
+    )
+
+    value = docs["categories"][0]["endpoints"][0]["request_body"]["type"]["properties"]["value"]
+    assert value["type"] == {"kind": "primitive", "type": "null"}

@@ -10,31 +10,34 @@ from pathlib import Path
 from typing import Any
 
 from mongo_atlas_sdk import __version__
+from mongo_atlas_sdk.apis import APIS, get_api
 from mongo_atlas_sdk.config import Settings
 from mongo_atlas_sdk.crawler import (
-    SPEC_URL,
     SpecSourceError,
     extract_api_docs,
     fetch_spec,
     load_spec,
     write_json_document,
 )
-from mongo_atlas_sdk.generator import LANGUAGES, GeneratorError, generate, get_target
+from mongo_atlas_sdk.generator import LANGUAGES, GeneratorError, generate_python
 from mongo_atlas_sdk.normalizer import normalize_api_docs
-
-DEFAULT_OUTPUT = Path(".data/api_docs.json")
-DEFAULT_NORMALIZED_OUTPUT = Path(".data/normalized_api_docs.json")
 
 
 def _add_generation_arguments(
     parser: argparse.ArgumentParser,
 ) -> None:
     parser.add_argument(
+        "--api",
+        choices=sorted(APIS),
+        default="admin",
+        help="API to generate (default: %(default)s).",
+    )
+    parser.add_argument(
         "-i",
         "--input",
         type=Path,
-        default=DEFAULT_NORMALIZED_OUTPUT,
-        help="Normalized document to read (default: %(default)s).",
+        default=None,
+        help="Normalized document to read (default: the API target).",
     )
     parser.add_argument(
         "-o",
@@ -83,16 +86,22 @@ def build_parser() -> argparse.ArgumentParser:
         ),
     )
     crawl_parser.add_argument(
+        "--api",
+        choices=sorted(APIS),
+        default="admin",
+        help="API to crawl (default: %(default)s).",
+    )
+    crawl_parser.add_argument(
         "-o",
         "--output",
         type=Path,
-        default=DEFAULT_OUTPUT,
-        help="Output path (default: %(default)s).",
+        default=None,
+        help="Output path (default: the API target).",
     )
     crawl_parser.add_argument(
         "--source",
-        default=SPEC_URL,
-        help="OpenAPI document URL (default: %(default)s).",
+        default=None,
+        help="OpenAPI document URL (default: the API target).",
     )
     crawl_parser.add_argument(
         "--spec",
@@ -108,18 +117,24 @@ def build_parser() -> argparse.ArgumentParser:
         ),
     )
     normalize_parser.add_argument(
+        "--api",
+        choices=sorted(APIS),
+        default="admin",
+        help="API to normalize (default: %(default)s).",
+    )
+    normalize_parser.add_argument(
         "-i",
         "--input",
         type=Path,
-        default=DEFAULT_OUTPUT,
-        help="Raw document to read (default: %(default)s).",
+        default=None,
+        help="Raw document to read (default: the API target).",
     )
     normalize_parser.add_argument(
         "-o",
         "--output",
         type=Path,
-        default=DEFAULT_NORMALIZED_OUTPUT,
-        help="Output path (default: %(default)s).",
+        default=None,
+        help="Output path (default: the API target).",
     )
 
     generate_parser = subparsers.add_parser(
@@ -145,21 +160,23 @@ def build_parser() -> argparse.ArgumentParser:
 
 
 def _crawl(args: argparse.Namespace) -> int:
+    api = get_api(args.api)
+    source = args.source or api.spec_url
+    output = args.output or api.raw_document
     try:
         if args.spec is not None:
             spec = load_spec(args.spec)
             source = str(args.spec)
         else:
-            spec = fetch_spec(args.source)
-            source = str(args.source)
+            spec = fetch_spec(source)
     except SpecSourceError as exc:
         print(f"error: {exc}", file=sys.stderr)
         return 1
 
     docs = extract_api_docs(spec, source_url=source)
-    write_json_document(docs, args.output)
+    write_json_document(docs, output)
     endpoints = sum(len(category["endpoints"]) for category in docs["categories"])
-    print(f"wrote {args.output} ({len(docs['categories'])} categories, {endpoints} endpoints)")
+    print(f"wrote {output} ({len(docs['categories'])} categories, {endpoints} endpoints)")
     return 0
 
 
@@ -179,21 +196,24 @@ def _load_json_object(path: Path) -> dict[str, Any] | None:
 
 
 def _normalize(args: argparse.Namespace) -> int:
-    docs = _load_json_object(args.input)
+    api = get_api(args.api)
+    input_path = args.input or api.raw_document
+    output = args.output or api.normalized_document
+    docs = _load_json_object(input_path)
     if docs is None:
         return 1
     if "schemas" not in docs:
         print(
-            f"error: {args.input} has no 'schemas' section; re-run `mongo-atlas crawl`",
+            f"error: {input_path} has no 'schemas' section; re-run `mongo-atlas crawl`",
             file=sys.stderr,
         )
         return 1
 
     normalized = normalize_api_docs(docs)
-    write_json_document(normalized, args.output)
+    write_json_document(normalized, output)
     stats = normalized["meta"]["stats"]
     print(
-        f"wrote {args.output} ({stats['categories']} categories, "
+        f"wrote {output} ({stats['categories']} categories, "
         f"{stats['endpoints']} endpoints, {stats['types']} types)"
     )
     warnings = normalized["meta"]["warnings"]
@@ -203,20 +223,29 @@ def _normalize(args: argparse.Namespace) -> int:
 
 
 def _generate(args: argparse.Namespace, language: str) -> int:
-    docs = _load_json_object(args.input)
+    api = get_api(args.api)
+    input_path = args.input or api.normalized_document
+    output = args.output or api.output_root
+    docs = _load_json_object(input_path)
     if docs is None:
         return 1
     if "types" not in docs or "categories" not in docs:
         print(
-            f"error: {args.input} is not a normalized document; re-run `mongo-atlas normalize`",
+            f"error: {input_path} is not a normalized document; re-run `mongo-atlas normalize`",
             file=sys.stderr,
         )
         return 1
 
     try:
-        target = get_target(language)
-        output = args.output if args.output is not None else target.default_output
-        stats = generate(language, docs, output_root=output, package=args.package)
+        stats = generate_python(
+            docs,
+            output,
+            package=args.package or api.package,
+            client_class=api.client_class,
+            base_url=api.base_url,
+            auth_mode=api.auth_mode,
+            path_prefix=api.path_prefix,
+        )
     except GeneratorError as exc:
         print(f"error: {exc}", file=sys.stderr)
         return 1

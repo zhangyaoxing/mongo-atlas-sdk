@@ -109,7 +109,9 @@ def _method_docstring(
     return "\n".join(parts).strip().replace("\\", "\\\\").replace('"""', '\\"\\"\\"')
 
 
-def _render_method(endpoint: Mapping[str, Any], imports: set[str]) -> dict[str, Any]:
+def _render_method(
+    endpoint: Mapping[str, Any], imports: set[str], path_prefix: str | None
+) -> dict[str, Any]:
     operation_id = str(endpoint.get("operation_id") or "call")
     method_name = snake_case(operation_id)
     path_parameters = [
@@ -174,7 +176,7 @@ def _render_method(endpoint: Mapping[str, Any], imports: set[str]) -> dict[str, 
         "return_annotation": return_annotation,
         "docstring": _method_docstring(endpoint, path_parameters, query_parameters, body),
         "path": _path_expression(
-            api_path(str(endpoint.get("path") or "")), path_parameters, imports
+            api_path(str(endpoint.get("path") or ""), prefix=path_prefix), path_parameters, imports
         ),
         "query_params": [
             {
@@ -212,20 +214,27 @@ def _import_block(imports: set[str], package: str) -> list[str]:
     return lines
 
 
-def render_resource(category: Mapping[str, Any], *, package: str) -> str:
+def render_resource(
+    category: Mapping[str, Any],
+    *,
+    package: str,
+    client_class: str,
+    path_prefix: str | None = None,
+) -> str:
     """Render one normalized category as a resource class module."""
     class_name = pascal_case(str(category.get("name") or "Untagged"))
     imports: set[str] = set()
     methods: list[dict[str, Any]] = []
     for endpoint in category.get("endpoints") or []:
         if isinstance(endpoint, Mapping):
-            methods.append(_render_method(endpoint, imports))
+            methods.append(_render_method(endpoint, imports, path_prefix))
 
     return render(
         "python",
         "resource.py.j2",
         class_name=class_name,
         package=package,
+        client_class=client_class,
         imports=_import_block(imports, package),
         description=docstring_text(category.get("description"), f"Operations for {class_name}."),
         methods=methods,
