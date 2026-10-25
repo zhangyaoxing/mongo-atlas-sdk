@@ -479,3 +479,26 @@ def test_null_schema_becomes_a_null_primitive() -> None:
 
     value = docs["categories"][0]["endpoints"][0]["request_body"]["type"]["properties"]["value"]
     assert value["type"] == {"kind": "primitive", "type": "null"}
+
+
+def test_scalar_all_of_merges_enum_values() -> None:
+    schemas = {
+        "AppEnvironment": {
+            "type": "string",
+            "enum": ["development", "production"],
+        },
+        "NullableAppEnvironment": {
+            "allOf": [
+                {"type": "string", "enum": ["", "development"]},
+                {"$ref": "#/components/schemas/AppEnvironment"},
+            ]
+        },
+    }
+
+    docs = normalize_api_docs(
+        _docs(schemas, {"$ref": "#/components/schemas/NullableAppEnvironment"})
+    )
+
+    nullable = docs["types"]["NullableAppEnvironment"]
+    assert nullable["kind"] == "enum"
+    assert nullable["values"] == ["", "development", "production"]

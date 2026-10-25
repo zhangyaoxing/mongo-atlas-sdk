@@ -328,6 +328,7 @@ class SchemaNormalizer:
         properties: dict[str, Any] = {}
         required: list[str] = []
         descriptions: list[str] = []
+        enum_values: list[Any] = []
 
         for branch in schema.get("allOf") or []:
             if not isinstance(branch, Mapping):
@@ -352,6 +353,11 @@ class SchemaNormalizer:
             for name in branch.get("required") or []:
                 if isinstance(name, str) and name not in required:
                     required.append(name)
+            for value in branch.get("enum") or []:
+                if value not in enum_values:
+                    enum_values.append(value)
+            if "const" in branch and branch["const"] not in enum_values:
+                enum_values.append(branch["const"])
             description = branch.get("description")
             if isinstance(description, str) and description:
                 descriptions.append(description)
@@ -369,6 +375,25 @@ class SchemaNormalizer:
             if key in {"allOf", "properties", "required"}:
                 continue
             merged[key] = value
+
+        merged_type = merged.get("type")
+        scalar_types = {"string", "integer", "number", "boolean", "null"}
+        is_scalar = merged_type in scalar_types or (
+            isinstance(merged_type, list) and all(kind in scalar_types for kind in merged_type)
+        )
+        if not properties and "additionalProperties" not in merged and is_scalar:
+            if enum_values:
+                merged["enum"] = enum_values
+            if "description" not in merged and descriptions:
+                merged["description"] = descriptions[0]
+            return merged
+
+        if not properties and "additionalProperties" not in merged and enum_values:
+            merged.setdefault("type", _const_type(enum_values[0]))
+            merged["enum"] = enum_values
+            if "description" not in merged and descriptions:
+                merged["description"] = descriptions[0]
+            return merged
 
         merged["properties"] = properties
         if required:
