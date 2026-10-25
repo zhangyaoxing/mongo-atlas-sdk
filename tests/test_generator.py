@@ -11,6 +11,7 @@ from typing import Any
 import httpx
 import pytest
 
+from mongo_atlas_sdk.apis import APIS
 from mongo_atlas_sdk.cli import main
 from mongo_atlas_sdk.generator import LANGUAGES, GeneratorError, generate, generate_python
 from mongo_atlas_sdk.generator.paths import api_path
@@ -559,3 +560,32 @@ def test_cli_pygen_supports_app_api(
     client = (output / "client.py").read_text(encoding="utf-8")
     assert "class AtlasAppAdminClient:" in client
     assert "7 models, 1 resources, 2 methods" in capsys.readouterr().out
+
+
+def test_generate_public_client(tmp_path: Path) -> None:
+    package = f"gen_status_{uuid.uuid4().hex[:8]}"
+    generate_python(
+        _docs(),
+        tmp_path / package,
+        package=package,
+        client_class="AtlasStatusClient",
+        base_url="https://status.example/api/v2",
+        auth_mode="none",
+        path_prefix=None,
+    )
+
+    client = (tmp_path / package / "client.py").read_text(encoding="utf-8")
+    assert "class AtlasStatusClient:" in client
+    assert 'DEFAULT_BASE_URL = "https://status.example/api/v2"' in client
+    assert 'self.auth_mode = "none"' in client
+    assert "Authorization" not in client
+    assert "def login(" not in client
+
+
+def test_api_targets_include_status() -> None:
+    assert set(APIS) == {"admin", "app", "status"}
+    status = APIS["status"]
+    assert status.package == "pyatlassdk.status"
+    assert status.client_class == "AtlasStatusClient"
+    assert status.auth_mode == "none"
+    assert status.path_prefix is None

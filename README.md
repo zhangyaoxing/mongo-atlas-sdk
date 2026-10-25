@@ -2,7 +2,7 @@
 
 # mongo-atlas-sdk
 
-MongoDB Atlas SDK generator and CLI (Python ≥ 3.10). It generates Python SDKs for the Atlas Administration API v2 and the App Services Admin API v3; both are published together as [pyatlassdk](https://pypi.org/project/pyatlassdk/).
+MongoDB Atlas SDK generator and CLI (Python ≥ 3.10). It generates Python SDKs for the Atlas Administration API v2, the App Services Admin API v3, and the Atlas Status API v2; all are published together as [pyatlassdk](https://pypi.org/project/pyatlassdk/).
 
 ## Requirements
 
@@ -13,10 +13,11 @@ MongoDB Atlas SDK generator and CLI (Python ≥ 3.10). It generates Python SDKs 
 
 ```bash
 uv sync                # create .venv and install dependencies
-make pipeline          # both APIs: crawl -> normalize -> generate
+make pipeline          # all APIs: crawl -> normalize -> generate
 # or run one API at a time:
 make pipeline-admin    # .data/api_docs.json -> pyatlassdk/admin
 make pipeline-app      # .data/api_docs.app.json -> pyatlassdk/app
+make pipeline-status   # .data/api_docs.status.json -> pyatlassdk/status
 ```
 
 ## Common commands
@@ -32,12 +33,12 @@ make pipeline-app      # .data/api_docs.app.json -> pyatlassdk/app
 | `make check` | Run the same checks as CI |
 | `make build` | Build sdist / wheel into `dist/` |
 | `make lock` | Refresh `uv.lock` |
-| `make crawl` / `make crawl-app` | Fetch the Admin API / App Services spec |
-| `make normalize` / `make normalize-app` | Normalize the Admin / App Services spec |
-| `make pygen` / `make pygen-app` | Generate the Admin / App Services SDK |
-| `make pipeline` | Run both API pipelines |
-| `make pipeline-admin` / `make pipeline-app` | Run one API pipeline |
-| `uv run mongo-atlas crawl --api app` | CLI: crawl a specific API (`admin` or `app`) |
+| `make crawl` / `make crawl-app` / `make crawl-status` | Fetch the Admin / App Services / Status spec |
+| `make normalize` / `make normalize-app` / `make normalize-status` | Normalize the Admin / App Services / Status spec |
+| `make pygen` / `make pygen-app` / `make pygen-status` | Generate the Admin / App Services / Status SDK |
+| `make pipeline` | Run all API pipelines |
+| `make pipeline-admin` / `make pipeline-app` / `make pipeline-status` | Run one API pipeline |
+| `uv run mongo-atlas crawl --api app` | CLI: crawl a specific API (`admin`, `app`, or `status`) |
 | `uv run mongo-atlas normalize --api app` | CLI: normalize a specific API |
 | `uv run mongo-atlas pygen --api app` | CLI: generate a specific API |
 
@@ -49,12 +50,14 @@ Both documentation sites render their content from official OpenAPI documents, w
 | --- | --- | --- | --- |
 | Atlas Administration API v2 | `https://www.mongodb.com/docs/api/doc/atlas-admin-api-v2.json` | 3.0.1 | `.data/api_docs.json` |
 | App Services Admin API v3 | `https://www.mongodb.com/docs/api/doc/atlas-app-services-admin-api-v3.json` | 3.1.0 | `.data/api_docs.app.json` |
+| Atlas Status API v2 | `https://www.mongodb.com/docs/api/doc/cloud-status.json` | 3.0.3 | `.data/api_docs.status.json` |
 
 The crawler therefore parses these JSON documents directly instead of rendering the pages with Playwright: the fields (`type` / `required` / `description`) are identical, but only one request is needed and the structure is stable. A full crawl takes about 2 seconds.
 
 ```bash
 uv run mongo-atlas crawl                       # Admin API -> .data/api_docs.json
 uv run mongo-atlas crawl --api app             # App Services -> .data/api_docs.app.json
+uv run mongo-atlas crawl --api status          # Status API -> .data/api_docs.status.json
 uv run mongo-atlas crawl --api app --spec local.json   # local OpenAPI file
 uv run mongo-atlas crawl --api app -o /tmp/docs.json   # custom output path
 ```
@@ -145,7 +148,7 @@ The normalization stage:
 - normalizes type names to PascalCase and appends a numeric suffix on collisions;
 - converts arrays, inline objects, `additionalProperties`, `enum`, `nullable`, `format` / `default` into closed type expressions.
 
-`--api app` normalizes the App Services document into `.data/normalized_api_docs.app.json`. That spec is OpenAPI 3.1, so the normalizer also handles `const`, `type: "null"`, and nested `$ref` targets such as `#/components/schemas/Logs/API`.
+`--api app` and `--api status` normalize the other APIs into `.data/normalized_api_docs.app.json` and `.data/normalized_api_docs.status.json`. The App Services spec is OpenAPI 3.1, so the normalizer also handles `const`, `type: "null"`, and nested `$ref` targets such as `#/components/schemas/Logs/API`; the Status spec is OpenAPI 3.0.3.
 
 Output structure (`.data/normalized_api_docs.json`, Admin API):
 
@@ -226,7 +229,7 @@ The `kind` of a type expression is one of `primitive`, `enum`, `array`, `object`
 
 | Language | Status | Default output | Generator |
 | --- | --- | --- | --- |
-| Python | supported | `pyatlassdk/admin`, `pyatlassdk/app` | `generator/python/` |
+| Python | supported | `pyatlassdk/admin`, `pyatlassdk/app`, `pyatlassdk/status` | `generator/python/` |
 | JavaScript | planned | – | – |
 | Rust | planned | – | – |
 
@@ -238,6 +241,7 @@ Both SDKs live in the separate [pyatlassdk](https://github.com/zhangyaoxing/pyat
 | --- | --- | --- | --- |
 | Atlas Administration API v2 | `pyatlassdk.admin` | `AtlasAdminClient` | Digest API keys or OAuth 2.0 service accounts |
 | App Services Admin API v3 | `pyatlassdk.app` | `AtlasAppAdminClient` | Bearer access token, or `AtlasAppAdminClient.login(username, api_key)` |
+| Atlas Status API v2 | `pyatlassdk.status` | `AtlasStatusClient` | None (public API) |
 
 The root package re-exports both clients:
 
@@ -249,7 +253,8 @@ from pyatlassdk import AtlasAdminClient, AtlasAppAdminClient
 git clone --recurse-submodules git@github.com:zhangyaoxing/mongo-atlas-sdk.git
 make pygen                                               # Admin SDK -> pyatlassdk/admin
 make pygen-app                                           # App Services SDK -> pyatlassdk/app
-make pipeline                                            # both API pipelines
+make pygen-status                                        # Status SDK -> pyatlassdk/status
+make pipeline                                            # all API pipelines
 uv run mongo-atlas pygen --api app -o /tmp/sdk --package sdk
 ```
 
@@ -259,6 +264,7 @@ Output:
 
 - Admin (`pyatlassdk/admin/`): 1027 pydantic models, 55 resource classes and 526 methods; `client.py` defines `AtlasAdminClient`
 - App Services (`pyatlassdk/app/`): 253 pydantic models, 30 resource classes and 181 methods; `client.py` defines `AtlasAppAdminClient`
+- Status (`pyatlassdk/status/`): 12 pydantic models, 4 resource classes and 8 methods; `client.py` defines `AtlasStatusClient`
 
 Generation rules:
 
@@ -268,7 +274,7 @@ Generation rules:
 - field names become snake_case and automatically get `Field(alias=...)` when they differ from the wire name; invalid identifiers such as `_id` and `2dsphereIndexVersion` are mapped correctly
 - endpoint paths are emitted relative to each client's `base_url`; the Admin client strips `/api/atlas/v2`, while App Services paths are already relative to `/api/admin/v3.0`
 - request bodies are serialized with pydantic's JSON mode, so `datetime` / `date` fields become ISO 8601 strings before httpx encodes them
-- Admin methods send the versioned `Accept` header declared by each endpoint's successful responses; App Services methods use `application/json`
+- Admin methods send the versioned `Accept` header declared by each endpoint's successful responses; App Services and Status methods use `application/json`
 - self-referencing types call `model_rebuild()` at the end of the module
 - enum members are sanitized: `<` → `LT`, `>` → `GT`, and invalid or duplicate names get a suffix
 - all-uppercase string enums accept any casing and normalize to the canonical value (`"secondary"` → `"SECONDARY"`); mixed-case enums stay strict
@@ -308,12 +314,22 @@ with AtlasAppAdminClient(access_token="...") as client:
     apps = client.apps.admin_list_applications(group_id="...")
 ```
 
+Status usage:
+
+```python
+from pyatlassdk import AtlasStatusClient
+
+with AtlasStatusClient() as client:
+    summary = client.status.get_status_summary()
+    print(summary.status.indicator)  # none | minor | major | critical
+```
+
 Notes:
 
 - Generation is idempotent; repeated runs produce the same result.
-- `pyatlassdk/admin/` and `pyatlassdk/app/` are owned by the generator; `pyatlassdk/__init__.py` is hand-maintained and re-exports both clients.
+- `pyatlassdk/admin/`, `pyatlassdk/app/`, and `pyatlassdk/status/` are owned by the generator; `pyatlassdk/__init__.py` is hand-maintained and re-exports both clients.
 - `AtlasClient` remains as an alias for `AtlasAdminClient` for backwards compatibility.
-- The `pyatlassdk` `pyproject.toml` excludes both generated packages from ruff; build and publish happen in that repository too.
+- The `pyatlassdk` `pyproject.toml` excludes all generated packages from ruff; build and publish happen in that repository too.
 - Commit order: commit and push in `pyatlassdk/` first, then commit the new submodule pointer here.
 - Fields without `required` in the normalized document become optional parameters. That reflects the spec, not a generator assumption.
 
@@ -352,7 +368,8 @@ The crawler, normalizer, API targets, and CLI plumbing stay unchanged.
 ├── pyatlassdk/               # submodule: generated SDKs (published to PyPI)
 │   ├── __init__.py           # hand-maintained: exports both clients
 │   ├── admin/               # generated Atlas Admin API v2 SDK
-│   └── app/                 # generated App Services Admin API v3 SDK
+│   ├── app/                 # generated App Services Admin API v3 SDK
+│   └── status/              # generated Atlas Status API v2 SDK
 ├── src/mongo_atlas_sdk/      # generator (CLI + crawl + normalize + code generation)
 │   ├── __init__.py
 │   ├── __main__.py           # python -m mongo_atlas_sdk

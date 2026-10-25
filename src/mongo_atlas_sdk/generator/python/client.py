@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Mapping
 
+from mongo_atlas_sdk.generator.errors import GeneratorError
 from mongo_atlas_sdk.generator.python.naming import snake_case
 from mongo_atlas_sdk.generator.templating import render
 
@@ -24,7 +25,15 @@ def render_client(
         for name, module in sorted(resources.items())
     ]
     entries = [{"name": name, "attribute": snake_case(name)} for name in sorted(resources)]
-    template = "client_bearer.py.j2" if auth_mode == "bearer" else "client_atlas.py.j2"
+    templates = {
+        "atlas": "client_atlas.py.j2",
+        "bearer": "client_bearer.py.j2",
+        "none": "client_public.py.j2",
+    }
+    try:
+        template = templates[auth_mode]
+    except KeyError as exc:
+        raise GeneratorError(f"unsupported auth mode: {auth_mode!r}") from exc
     return render(
         "python",
         template,

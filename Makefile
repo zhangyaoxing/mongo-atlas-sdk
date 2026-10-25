@@ -5,7 +5,8 @@ SDK_LANG ?= python
 
 .PHONY: help install lock lint format format-check typecheck test coverage \
 	crawl normalize generate pygen crawl-app normalize-app generate-app pygen-app \
-	pipeline pipeline-admin pipeline-app check build clean
+	crawl-status normalize-status generate-status pygen-status \
+	pipeline pipeline-admin pipeline-app pipeline-status check build clean
 
 help: ## Show available targets
 	@grep -E '^[a-zA-Z_-]+:.*?## ' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "  \033[36m%-16s\033[0m %s\n", $$1, $$2}'
@@ -59,11 +60,25 @@ generate-app: ## Generate the App Services SDK (SDK_LANG=python by default)
 pygen-app: ## Alias for `generate --language python --api app`
 	$(UV) run mongo-atlas pygen --api app
 
-pipeline: pipeline-admin pipeline-app ## Run both API pipelines
+crawl-status: ## Fetch the Atlas Status API spec
+	$(UV) run mongo-atlas crawl --api status
+
+normalize-status: ## Normalize the Atlas Status API spec
+	$(UV) run mongo-atlas normalize --api status
+
+generate-status: ## Generate the Status SDK (SDK_LANG=python by default)
+	$(UV) run mongo-atlas generate --language $(SDK_LANG) --api status
+
+pygen-status: ## Alias for `generate --language python --api status`
+	$(UV) run mongo-atlas pygen --api status
+
+pipeline: pipeline-admin pipeline-app pipeline-status ## Run all API pipelines
 
 pipeline-admin: crawl normalize pygen ## Admin API: crawl -> normalize -> generate
 
 pipeline-app: crawl-app normalize-app pygen-app ## App Services API: crawl -> normalize -> generate
+
+pipeline-status: crawl-status normalize-status pygen-status ## Status API: crawl -> normalize -> generate
 
 check: lint format-check typecheck test ## Run every check used by CI
 

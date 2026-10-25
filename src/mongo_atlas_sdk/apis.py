@@ -50,6 +50,19 @@ APIS: dict[str, AtlasApi] = {
         auth_mode="bearer",
         path_prefix=None,
     ),
+    "status": AtlasApi(
+        key="status",
+        title="MongoDB Atlas Status API",
+        spec_url="https://www.mongodb.com/docs/api/doc/cloud-status.json",
+        raw_document=Path(".data/api_docs.status.json"),
+        normalized_document=Path(".data/normalized_api_docs.status.json"),
+        output_root=Path("pyatlassdk/src/pyatlassdk/status"),
+        package="pyatlassdk.status",
+        client_class="AtlasStatusClient",
+        base_url="https://status.mongodb.com/api/v2",
+        auth_mode="none",
+        path_prefix=None,
+    ),
 }
 
 
