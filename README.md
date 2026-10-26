@@ -1,4 +1,5 @@
 [![CI](https://github.com/zhangyaoxing/mongo-atlas-sdk/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/zhangyaoxing/mongo-atlas-sdk/actions/workflows/ci.yml)
+[![PyPI](https://img.shields.io/pypi/v/pyatlassdk)](https://pypi.org/project/pyatlassdk/)
 
 # mongo-atlas-sdk
 
