@@ -15,6 +15,8 @@ from mongo_atlas_sdk.apis import APIS
 from mongo_atlas_sdk.cli import main
 from mongo_atlas_sdk.generator import LANGUAGES, GeneratorError, generate, generate_python
 from mongo_atlas_sdk.generator.paths import api_path
+from mongo_atlas_sdk.generator.python.resources import _response_annotation
+from mongo_atlas_sdk.generator.python.schema import python_literal
 
 
 def _docs() -> dict[str, Any]:
@@ -589,3 +591,58 @@ def test_api_targets_include_status() -> None:
     assert status.client_class == "AtlasStatusClient"
     assert status.auth_mode == "none"
     assert status.path_prefix is None
+
+
+def test_python_literal_renders_json_booleans_and_null() -> None:
+    assert python_literal(True) == "True"
+    assert python_literal(False) == "False"
+    assert python_literal(None) == "None"
+    assert python_literal("x") == '"x"'
+
+
+def test_response_annotation_uses_bytes_for_gzip_and_str_for_csv() -> None:
+    gzip_endpoint = {
+        "responses": [
+            {
+                "status": "200",
+                "content": [
+                    {
+                        "content_type": "application/vnd.atlas.2023-01-01+gzip",
+                        "type": {"kind": "primitive", "type": "string"},
+                    }
+                ],
+            }
+        ]
+    }
+    csv_endpoint = {
+        "responses": [
+            {
+                "status": "200",
+                "content": [
+                    {
+                        "content_type": "application/vnd.atlas.2023-01-01+csv",
+                        "type": {"kind": "primitive", "type": "string"},
+                    }
+                ],
+            }
+        ]
+    }
+
+    assert _response_annotation(gzip_endpoint, set()) == "bytes"
+    assert _response_annotation(csv_endpoint, set()) == "str"
+
+
+def test_resource_class_is_renamed_when_it_collides_with_a_model(tmp_path: Path) -> None:
+    package = f"gen_collision_{uuid.uuid4().hex[:8]}"
+    docs = _docs()
+    docs["categories"][0]["name"] = "Cluster"
+
+    generate_python(docs, tmp_path / package, package=package)
+
+    resource = (tmp_path / package / "resources" / "cluster.py").read_text(encoding="utf-8")
+    client = (tmp_path / package / "client.py").read_text(encoding="utf-8")
+    assert "class ClusterResource:" in resource
+    assert "from " + package + ".models.cluster import Cluster" in resource
+    assert "body: Cluster," in resource
+    assert f"from {package}.resources.cluster import ClusterResource" in client
+    assert "self.cluster = ClusterResource(self)" in client

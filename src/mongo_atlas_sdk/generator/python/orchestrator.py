@@ -108,15 +108,23 @@ def generate_python(
             raise GeneratorError(f"model module name collision for {name!r}")
         model_modules[name] = module
 
+    model_names = set(types)
+    resource_specs: list[tuple[Mapping[str, Any], str, str]] = []
     resource_modules: dict[str, str] = {}
+    resource_attributes: dict[str, str] = {}
     for category in categories:
         if not isinstance(category, Mapping):
             continue
-        class_name = pascal_case(str(category.get("name") or "Untagged"))
-        module = snake_case(class_name)
+        base_name = pascal_case(str(category.get("name") or "Untagged"))
+        module = snake_case(base_name)
         if module in resource_modules.values():
-            raise GeneratorError(f"resource module name collision for {class_name!r}")
+            raise GeneratorError(f"resource module name collision for {base_name!r}")
+        class_name = base_name
+        while class_name in model_names or class_name in resource_modules:
+            class_name = f"{class_name}Resource"
         resource_modules[class_name] = module
+        resource_attributes[class_name] = snake_case(base_name)
+        resource_specs.append((category, class_name, module))
 
     models_dir = output_root / "models"
     resources_dir = output_root / "resources"
@@ -131,14 +139,11 @@ def generate_python(
     (models_dir / "__init__.py").write_text(_models_init(model_modules), encoding="utf-8")
 
     method_count = 0
-    for category in categories:
-        if not isinstance(category, Mapping):
-            continue
-        class_name = pascal_case(str(category.get("name") or "Untagged"))
-        module = resource_modules[class_name]
+    for category, class_name, module in resource_specs:
         (resources_dir / f"{module}.py").write_text(
             render_resource(
                 category,
+                class_name=class_name,
                 package=package,
                 client_class=client_class,
                 path_prefix=path_prefix,
@@ -154,6 +159,7 @@ def generate_python(
     (output_root / "client.py").write_text(
         render_client(
             resource_modules,
+            attributes=resource_attributes,
             package=package,
             client_class=client_class,
             base_url=base_url,

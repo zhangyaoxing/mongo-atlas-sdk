@@ -20,6 +20,17 @@ _STRING_FORMATS = {
 }
 
 
+def python_literal(value: Any) -> str:
+    """Render a JSON scalar as a Python literal."""
+    if value is True:
+        return "True"
+    if value is False:
+        return "False"
+    if value is None:
+        return "None"
+    return json.dumps(value)
+
+
 def annotation(
     expr: Mapping[str, Any],
     *,
@@ -38,7 +49,7 @@ def annotation(
     if kind == "enum":
         imports.add("Literal")
         raw_values = list(expr.get("values") or [])
-        values = ", ".join(json.dumps(value) for value in raw_values)
+        values = ", ".join(python_literal(value) for value in raw_values)
         literal = f"Literal[{values}]"
         uppercase_strings = bool(raw_values) and all(
             isinstance(value, str) and value == value.upper() for value in raw_values

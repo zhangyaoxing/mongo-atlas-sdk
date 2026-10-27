@@ -275,6 +275,8 @@ Generation rules:
 - field names become snake_case and automatically get `Field(alias=...)` when they differ from the wire name; invalid identifiers such as `_id` and `2dsphereIndexVersion` are mapped correctly
 - endpoint paths are emitted relative to each client's `base_url`; the Admin client strips `/api/atlas/v2`, while App Services paths are already relative to `/api/admin/v3.0`
 - request bodies are serialized with pydantic's JSON mode, so `datetime` / `date` fields become ISO 8601 strings before httpx encodes them
+- empty successful responses return `None`; gzip downloads return `bytes` and CSV/text downloads return `str`
+- 3xx responses raise `AtlasApiError`; App Services `access_token` values must be non-empty
 - Admin methods send the versioned `Accept` header declared by each endpoint's successful responses; App Services and Status methods use `application/json`
 - self-referencing types call `model_rebuild()` at the end of the module
 - enum members are sanitized: `<` → `LT`, `>` → `GT`, and invalid or duplicate names get a suffix

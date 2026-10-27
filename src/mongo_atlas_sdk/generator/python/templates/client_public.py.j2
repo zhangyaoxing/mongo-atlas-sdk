@@ -88,10 +88,19 @@ class {{ client_class }}:
             json=_serialize(json),
             headers=headers,
         )
-        if response.status_code >= 400:
+        if response.status_code >= 300:
             raise AtlasApiError(
                 response.status_code, response.text, _payload(response)
             )
+        if not response.content:
+            return None
         if response_model is None:
             return None
+        if response_model is bytes:
+            return response.content
+        if response_model is str:
+            media_type = response.headers.get("content-type", "").lower()
+            if "json" in media_type:
+                return TypeAdapter(str).validate_python(response.json())
+            return response.text
         return TypeAdapter(response_model).validate_python(response.json())

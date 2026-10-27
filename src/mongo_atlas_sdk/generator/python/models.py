@@ -8,7 +8,7 @@ from typing import Any
 
 from mongo_atlas_sdk.generator.ir import references
 from mongo_atlas_sdk.generator.python.naming import enum_member, field_name, snake_case
-from mongo_atlas_sdk.generator.python.schema import annotation
+from mongo_atlas_sdk.generator.python.schema import annotation, python_literal
 from mongo_atlas_sdk.generator.python.templating import docstring_text
 from mongo_atlas_sdk.generator.templating import render
 
@@ -94,7 +94,7 @@ def _enum_members(definition: Mapping[str, Any]) -> list[dict[str, str]]:
             member = f"{base}_{counter}"
             counter += 1
         used.add(member)
-        members.append({"name": member, "value": json.dumps(value)})
+        members.append({"name": member, "value": python_literal(value)})
     return members
 
 

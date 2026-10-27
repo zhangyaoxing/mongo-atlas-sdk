@@ -7,7 +7,6 @@ from collections.abc import Mapping
 from typing import Any
 
 from mongo_atlas_sdk.generator.media import latest_media_type
-from mongo_atlas_sdk.generator.naming import pascal_case
 from mongo_atlas_sdk.generator.paths import api_path
 from mongo_atlas_sdk.generator.python.naming import snake_case
 from mongo_atlas_sdk.generator.python.schema import annotation
@@ -16,19 +15,6 @@ from mongo_atlas_sdk.generator.templating import render
 
 _TYPING = frozenset({"Any", "Literal"})
 _SUCCESS_PREFIX = "2"
-
-
-def _success_type_expressions(endpoint: Mapping[str, Any]) -> list[Mapping[str, Any]]:
-    expressions: list[Mapping[str, Any]] = []
-    for response in endpoint.get("responses") or []:
-        status = str(response.get("status") or "")
-        if not status.startswith(_SUCCESS_PREFIX):
-            continue
-        for content in response.get("content") or []:
-            type_expr = content.get("type")
-            if isinstance(type_expr, Mapping):
-                expressions.append(type_expr)
-    return expressions
 
 
 def _accept_media_type(endpoint: Mapping[str, Any]) -> str | None:
@@ -45,13 +31,30 @@ def _accept_media_type(endpoint: Mapping[str, Any]) -> str | None:
 
 
 def _response_annotation(endpoint: Mapping[str, Any], imports: set[str]) -> str:
-    expressions = _success_type_expressions(endpoint)
-    if not expressions:
+    rendered: list[str] = []
+    for response in endpoint.get("responses") or []:
+        if not str(response.get("status") or "").startswith(_SUCCESS_PREFIX):
+            continue
+        for content in response.get("content") or []:
+            media_type = str(content.get("content_type") or "")
+            if media_type.endswith("+gzip") or media_type == "application/gzip":
+                rendered.append("bytes")
+                continue
+            if media_type.endswith("+csv") or media_type.startswith("text/"):
+                rendered.append("str")
+                continue
+            type_expr = content.get("type")
+            if isinstance(type_expr, Mapping):
+                rendered.append(
+                    annotation(
+                        type_expr,
+                        current="",
+                        imports=imports,
+                        case_insensitive=False,
+                    )
+                )
+    if not rendered:
         return "None"
-    rendered = [
-        annotation(expr, current="", imports=imports, case_insensitive=False)
-        for expr in expressions
-    ]
     return " | ".join(dict.fromkeys(rendered))
 
 
@@ -217,12 +220,12 @@ def _import_block(imports: set[str], package: str) -> list[str]:
 def render_resource(
     category: Mapping[str, Any],
     *,
+    class_name: str,
     package: str,
     client_class: str,
     path_prefix: str | None = None,
 ) -> str:
     """Render one normalized category as a resource class module."""
-    class_name = pascal_case(str(category.get("name") or "Untagged"))
     imports: set[str] = set()
     methods: list[dict[str, Any]] = []
     for endpoint in category.get("endpoints") or []:

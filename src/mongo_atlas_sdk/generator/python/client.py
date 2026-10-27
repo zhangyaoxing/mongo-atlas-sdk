@@ -12,6 +12,7 @@ from mongo_atlas_sdk.generator.templating import render
 def render_client(
     resources: Mapping[str, str],
     *,
+    attributes: Mapping[str, str] | None = None,
     package: str,
     client_class: str,
     base_url: str,
@@ -24,7 +25,11 @@ def render_client(
         f"from {package}.resources.{module} import {name}"
         for name, module in sorted(resources.items())
     ]
-    entries = [{"name": name, "attribute": snake_case(name)} for name in sorted(resources)]
+    attributes = attributes or {}
+    entries = [
+        {"name": name, "attribute": attributes.get(name, snake_case(name))}
+        for name in sorted(resources)
+    ]
     templates = {
         "atlas": "client_atlas.py.j2",
         "bearer": "client_bearer.py.j2",
