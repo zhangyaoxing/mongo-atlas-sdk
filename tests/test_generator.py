@@ -531,6 +531,8 @@ def test_generate_bearer_client(tmp_path: Path) -> None:
     assert "class AtlasAppAdminClient:" in client
     assert 'DEFAULT_BASE_URL = "https://services.example/api/admin/v3.0"' in client
     assert "def login(" in client
+    assert "exclude_unset=True" in client
+    assert "exclude_none=True" not in client
     assert "from pyatlassdk._errors import AtlasApiError" not in client
 
 
