@@ -245,6 +245,7 @@ def _generate(args: argparse.Namespace, language: str) -> int:
             base_url=api.base_url,
             auth_mode=api.auth_mode,
             path_prefix=api.path_prefix,
+            docs_base_url=api.docs_url,
         )
     except GeneratorError as exc:
         print(f"error: {exc}", file=sys.stderr)

@@ -88,6 +88,7 @@ def generate_python(
     base_url: str = "https://cloud.mongodb.com/api/atlas/v2",
     auth_mode: str = "atlas",
     path_prefix: str | None = "/api/atlas/v2",
+    docs_base_url: str | None = None,
 ) -> dict[str, int]:
     """Generate models, resources, and ``client.py`` under ``output_root``."""
     raw_types = docs.get("types")
@@ -147,6 +148,7 @@ def generate_python(
                 package=package,
                 client_class=client_class,
                 path_prefix=path_prefix,
+                docs_base_url=docs_base_url,
             ),
             encoding="utf-8",
         )

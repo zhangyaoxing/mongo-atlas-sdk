@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import textwrap
 from collections.abc import Mapping
 from typing import Any
 
@@ -15,6 +16,7 @@ from mongo_atlas_sdk.generator.templating import render
 
 _TYPING = frozenset({"Any", "Literal"})
 _SUCCESS_PREFIX = "2"
+_DOC_WIDTH = 88
 
 
 def _accept_media_type(endpoint: Mapping[str, Any]) -> str | None:
@@ -73,17 +75,37 @@ def _path_expression(path: str, path_parameters: list[Mapping[str, Any]], import
     return "f" + json.dumps(rendered)
 
 
+def _wrap_paragraphs(text: str) -> list[str]:
+    """Wrap each source line while preserving blank lines and list structure."""
+    lines: list[str] = []
+    for raw_line in text.splitlines():
+        line = raw_line.strip()
+        if not line:
+            if lines and lines[-1] != "":
+                lines.append("")
+            continue
+        lines.extend(textwrap.wrap(line, width=_DOC_WIDTH) or [""])
+    while lines and lines[-1] == "":
+        lines.pop()
+    return lines
+
+
 def _method_docstring(
     endpoint: Mapping[str, Any],
     path_parameters: list[Mapping[str, Any]],
     query_parameters: list[Mapping[str, Any]],
     body: Mapping[str, Any] | None,
+    *,
+    operation_id: str,
+    docs_base_url: str | None,
 ) -> str:
     summary = str(endpoint.get("summary") or "").strip() or "Call the API endpoint."
     description = str(endpoint.get("description") or "").strip()
-    parts = [summary]
+
+    parts = textwrap.wrap(summary, width=_DOC_WIDTH)
     if description:
-        parts.extend(["", description])
+        parts.append("")
+        parts.extend(_wrap_paragraphs(description))
 
     arguments: list[tuple[str, str]] = []
     for parameter in path_parameters:
@@ -107,13 +129,30 @@ def _method_docstring(
         parts.extend(["", "Args:"])
         for name, description_text in arguments:
             collapsed = " ".join(description_text.split())
-            parts.append(f"    {name}: {collapsed}" if collapsed else f"    {name}:")
+            if not collapsed:
+                parts.append(f"    {name}:")
+                continue
+            parts.extend(
+                textwrap.wrap(
+                    collapsed,
+                    width=_DOC_WIDTH,
+                    initial_indent=f"    {name}: ",
+                    subsequent_indent="        ",
+                )
+            )
+
+    if docs_base_url:
+        url = f"{docs_base_url.rstrip('/')}/operation/operation-{operation_id.lower()}"
+        parts.extend(["", "Reference:", f"    {url}"])
 
     return "\n".join(parts).strip().replace("\\", "\\\\").replace('"""', '\\"\\"\\"')
 
 
 def _render_method(
-    endpoint: Mapping[str, Any], imports: set[str], path_prefix: str | None
+    endpoint: Mapping[str, Any],
+    imports: set[str],
+    path_prefix: str | None,
+    docs_base_url: str | None,
 ) -> dict[str, Any]:
     operation_id = str(endpoint.get("operation_id") or "call")
     method_name = snake_case(operation_id)
@@ -177,7 +216,14 @@ def _render_method(
         "name": method_name,
         "arguments": arguments,
         "return_annotation": return_annotation,
-        "docstring": _method_docstring(endpoint, path_parameters, query_parameters, body),
+        "docstring": _method_docstring(
+            endpoint,
+            path_parameters,
+            query_parameters,
+            body,
+            operation_id=operation_id,
+            docs_base_url=docs_base_url,
+        ),
         "path": _path_expression(
             api_path(str(endpoint.get("path") or ""), prefix=path_prefix), path_parameters, imports
         ),
@@ -224,13 +270,14 @@ def render_resource(
     package: str,
     client_class: str,
     path_prefix: str | None = None,
+    docs_base_url: str | None = None,
 ) -> str:
     """Render one normalized category as a resource class module."""
     imports: set[str] = set()
     methods: list[dict[str, Any]] = []
     for endpoint in category.get("endpoints") or []:
         if isinstance(endpoint, Mapping):
-            methods.append(_render_method(endpoint, imports, path_prefix))
+            methods.append(_render_method(endpoint, imports, path_prefix, docs_base_url))
 
     return render(
         "python",

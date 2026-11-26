@@ -4,6 +4,7 @@ import importlib
 import json
 import sys
 import uuid
+from collections.abc import Mapping
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
@@ -15,7 +16,10 @@ from mongo_atlas_sdk.apis import APIS
 from mongo_atlas_sdk.cli import main
 from mongo_atlas_sdk.generator import LANGUAGES, GeneratorError, generate, generate_python
 from mongo_atlas_sdk.generator.paths import api_path
-from mongo_atlas_sdk.generator.python.resources import _response_annotation
+from mongo_atlas_sdk.generator.python.resources import (
+    _method_docstring,
+    _response_annotation,
+)
 from mongo_atlas_sdk.generator.python.schema import python_literal
 
 
@@ -227,10 +231,18 @@ def _docs() -> dict[str, Any]:
 
 def test_generate_python_writes_models_resources_and_client(tmp_path: Path) -> None:
     package = f"gen_sdk_{uuid.uuid4().hex[:8]}"
-    stats = generate_python(_docs(), tmp_path / package, package=package)
+    stats = generate_python(
+        _docs(),
+        tmp_path / package,
+        package=package,
+        docs_base_url="https://docs.example/api",
+    )
 
     assert stats == {"models": 7, "resources": 1, "methods": 2}
     model = (tmp_path / package / "models" / "cluster.py").read_text(encoding="utf-8")
+    resource = (tmp_path / package / "resources" / "clusters.py").read_text(encoding="utf-8")
+    assert "Reference:" in resource
+    assert "https://docs.example/api/operation/operation-creategroupcluster" in resource
     assert "class Cluster(BaseModel):" in model
     assert "name: str = Field(description=" in model
     assert (
@@ -649,3 +661,51 @@ def test_resource_class_is_renamed_when_it_collides_with_a_model(tmp_path: Path)
     assert "body: Cluster," in resource
     assert f"from {package}.resources.cluster import ClusterResource" in client
     assert "self.cluster = ClusterResource(self)" in client
+
+
+def test_method_docstring_wraps_long_text_and_adds_reference() -> None:
+    endpoint = {
+        "summary": "Return All Suggested Indexes",
+        "description": (
+            "Returns the indexes that the Performance Advisor suggests. "
+            "The Performance Advisor monitors queries that MongoDB considers slow "
+            "and suggests new indexes to improve query performance. "
+        )
+        * 3,
+    }
+    path_parameters: list[Mapping[str, Any]] = [
+        {
+            "name": "groupId",
+            "description": (
+                "Unique 24-hexadecimal digit string that identifies your project. "
+                "Use the /groups endpoint to retrieve all projects. "
+            )
+            * 3,
+        }
+    ]
+    query_parameters: list[Mapping[str, Any]] = [
+        {
+            "name": "namespaces",
+            "description": "Namespaces from which to retrieve suggested indexes. " * 4,
+        }
+    ]
+    body = {"description": "Optional request body. " * 8}
+
+    text = _method_docstring(
+        endpoint,
+        path_parameters,
+        query_parameters,
+        body,
+        operation_id="listGroupClusterPerformanceAdvisorSuggestedIndexes",
+        docs_base_url="https://www.mongodb.com/docs/api/doc/atlas-admin-api-v2",
+    )
+
+    for line in text.splitlines():
+        if line.strip().startswith("http"):
+            continue
+        assert len(line) <= 88
+    assert "\n\nArgs:\n" in text
+    assert "    group_id: " in text
+    assert "        " in text  # wrapped continuation lines
+    assert "Reference:" in text
+    assert "operation-listgroupclusterperformanceadvisorsuggestedindexes" in text

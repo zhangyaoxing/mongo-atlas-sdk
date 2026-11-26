@@ -16,6 +16,7 @@ class AtlasApi:
     raw_document: Path
     normalized_document: Path
     output_root: Path
+    docs_url: str
     package: str
     client_class: str
     base_url: str
@@ -31,6 +32,7 @@ APIS: dict[str, AtlasApi] = {
         raw_document=Path(".data/api_docs.json"),
         normalized_document=Path(".data/normalized_api_docs.json"),
         output_root=Path("pyatlassdk/src/pyatlassdk/admin"),
+        docs_url="https://www.mongodb.com/docs/api/doc/atlas-admin-api-v2",
         package="pyatlassdk.admin",
         client_class="AtlasAdminClient",
         base_url="https://cloud.mongodb.com/api/atlas/v2",
@@ -44,6 +46,7 @@ APIS: dict[str, AtlasApi] = {
         raw_document=Path(".data/api_docs.app.json"),
         normalized_document=Path(".data/normalized_api_docs.app.json"),
         output_root=Path("pyatlassdk/src/pyatlassdk/app"),
+        docs_url="https://www.mongodb.com/docs/api/doc/atlas-app-services-admin-api-v3",
         package="pyatlassdk.app",
         client_class="AtlasAppAdminClient",
         base_url="https://services.cloud.mongodb.com/api/admin/v3.0",
@@ -57,6 +60,7 @@ APIS: dict[str, AtlasApi] = {
         raw_document=Path(".data/api_docs.status.json"),
         normalized_document=Path(".data/normalized_api_docs.status.json"),
         output_root=Path("pyatlassdk/src/pyatlassdk/status"),
+        docs_url="https://www.mongodb.com/docs/api/doc/cloud-status",
         package="pyatlassdk.status",
         client_class="AtlasStatusClient",
         base_url="https://status.mongodb.com/api/v2",
