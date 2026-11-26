@@ -279,6 +279,7 @@ Generation rules:
 - explicitly set `None` fields serialize as JSON `null`; fields that were never set are omitted
 - 3xx responses raise `AtlasApiError`; App Services `access_token` values must be non-empty
 - Admin methods send the versioned `Accept` header declared by each endpoint's successful responses; App Services and Status methods use `application/json`
+- generated clients load the nearest `.env` file and read `MONGO_ATLAS_*` credentials when no explicit credentials are passed
 - self-referencing types call `model_rebuild()` at the end of the module
 - enum members are sanitized: `<` → `LT`, `>` → `GT`, and invalid or duplicate names get a suffix
 - all-uppercase string enums accept any casing and normalize to the canonical value (`"secondary"` → `"SECONDARY"`); mixed-case enums stay strict

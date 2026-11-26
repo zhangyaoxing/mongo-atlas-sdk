@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import datetime as dt
+import os
 from typing import Any, Mapping
 
 import httpx
@@ -59,10 +60,14 @@ class {{ client_class }}:
 
     def __init__(
         self,
-        access_token: str,
-        base_url: str = DEFAULT_BASE_URL,
+        access_token: str | None = None,
+        base_url: str | None = None,
         timeout: float = 30.0,
     ) -> None:
+        if access_token is None:
+            access_token = os.getenv("MONGO_ATLAS_ACCESS_TOKEN") or None
+        if base_url is None:
+            base_url = os.getenv("MONGO_ATLAS_APP_BASE_URL") or DEFAULT_BASE_URL
         if not access_token or not access_token.strip():
             raise ValueError("access_token must not be empty")
         self.auth_mode = "bearer"
